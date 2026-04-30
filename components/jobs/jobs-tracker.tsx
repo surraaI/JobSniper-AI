@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { ExternalLink, Search, Filter, Clock, CheckCircle2, XCircle, MessageSquare, Building2, MapPin, Calendar, FileText, Mail, AlertTriangle, Shield } from "lucide-react"
+import { useState, useEffect } from "react"
+import { ExternalLink, Search, Filter, Clock, CheckCircle2, XCircle, MessageSquare, Building2, MapPin, Calendar, FileText, Mail, AlertTriangle, Shield, Loader2, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -12,8 +12,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { api } from "@/lib/api"
 
-type JobStatus = "applied" | "under_review" | "assessment" | "interview_scheduled" | "interview" | "rejected" | "offer"
+type JobStatus = "applied" | "under_review" | "assessment" | "interview_scheduled" | "interview" | "rejected" | "offer" | "pending_approval" | "approved" | "withdrawn"
 
 interface Job {
   id: string
@@ -208,8 +209,48 @@ const statusConfig: Record<JobStatus, { label: string; color: string; icon: Reac
 export function JobsTracker() {
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [jobs, setJobs] = useState<Job[]>(mockJobs)
+  const [loading, setLoading] = useState(false)
+  const [usingDemo, setUsingDemo] = useState(true)
 
-  const filteredJobs = mockJobs.filter((job) => {
+  const fetchJobs = async () => {
+    setLoading(true)
+    try {
+      const response = await api.getApplications()
+      if (response.applications && response.applications.length > 0) {
+        const mappedJobs: Job[] = response.applications.map((app) => ({
+          id: app.id,
+          company: app.job?.company || "Unknown",
+          position: app.job?.title || "Unknown Position",
+          location: app.job?.location || "Unknown",
+          salary: app.job?.salary_min && app.job?.salary_max 
+            ? `$${app.job.salary_min / 1000}k - $${app.job.salary_max / 1000}k`
+            : "Not specified",
+          appliedDate: app.applied_at || app.created_at,
+          status: app.status as JobStatus,
+          jobUrl: app.job?.job_url || "#",
+          matchScore: app.match_score || 0,
+          sentinelUpdate: app.sentinel_update,
+          deadline: app.deadline,
+          source: "sniper" as const,
+        }))
+        setJobs(mappedJobs)
+        setUsingDemo(false)
+      }
+    } catch (error) {
+      console.log("[v0] Using demo data - API unavailable:", error)
+      setJobs(mockJobs)
+      setUsingDemo(true)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchJobs()
+  }, [])
+
+  const filteredJobs = jobs.filter((job) => {
     const matchesSearch =
       job.company.toLowerCase().includes(searchQuery.toLowerCase()) ||
       job.position.toLowerCase().includes(searchQuery.toLowerCase())
@@ -218,15 +259,44 @@ export function JobsTracker() {
   })
 
   const stats = {
-    total: mockJobs.length,
-    interviews: mockJobs.filter((j) => j.status === "interview" || j.status === "interview_scheduled").length,
-    assessments: mockJobs.filter((j) => j.status === "assessment").length,
-    offers: mockJobs.filter((j) => j.status === "offer").length,
-    actionRequired: mockJobs.filter((j) => j.deadline || j.status === "assessment" || j.status === "interview_scheduled").length,
+    total: jobs.length,
+    interviews: jobs.filter((j) => j.status === "interview" || j.status === "interview_scheduled").length,
+    assessments: jobs.filter((j) => j.status === "assessment").length,
+    offers: jobs.filter((j) => j.status === "offer").length,
+    actionRequired: jobs.filter((j) => j.deadline || j.status === "assessment" || j.status === "interview_scheduled").length,
   }
 
   return (
     <div className="space-y-6">
+      {/* Header with refresh */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          {usingDemo && (
+            <Badge variant="outline" className="text-amber-400 border-amber-400/50">
+              Demo Mode
+            </Badge>
+          )}
+          {!usingDemo && (
+            <Badge variant="outline" className="text-green-400 border-green-400/50">
+              Live Data
+            </Badge>
+          )}
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={fetchJobs}
+          disabled={loading}
+        >
+          {loading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4" />
+          )}
+          <span className="ml-2">Refresh</span>
+        </Button>
+      </div>
+
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div className="rounded-lg border border-border bg-card p-4">

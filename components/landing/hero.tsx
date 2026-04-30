@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button"
 import { ArrowRight, Crosshair } from "lucide-react"
+import Link from "next/link"
 
 export function Hero() {
   return (
@@ -41,12 +42,14 @@ export function Hero() {
         </p>
         
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-          <Button size="lg" className="px-8 py-6 text-base font-medium">
-            Get early access
+          <Button size="lg" className="px-8 py-6 text-base font-medium" asChild>
+            <Link href="/auth/signup">Get early access</Link>
           </Button>
-          <Button variant="outline" size="lg" className="px-8 py-6 text-base font-medium group">
-            See how it works
-            <ArrowRight className="ml-2 w-4 h-4 group-hover:translate-x-1 transition-transform" />
+          <Button variant="outline" size="lg" className="px-8 py-6 text-base font-medium group" asChild>
+            <Link href="/#how-it-works">
+              See how it works
+              <ArrowRight className="ml-2 w-4 h-4 group-hover:translate-x-1 transition-transform" />
+            </Link>
           </Button>
         </div>
       </div>

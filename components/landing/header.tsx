@@ -6,10 +6,10 @@ import Link from "next/link"
 import { useState } from "react"
 
 const navLinks = [
-  { label: "How it works", href: "#how-it-works" },
-  { label: "Features", href: "#features" },
+  { label: "How it works", href: "/#how-it-works" },
+  { label: "Features", href: "/#features" },
+  { label: "Dashboard", href: "/dashboard" },
   { label: "Applied Jobs", href: "/jobs" },
-  { label: "Pricing", href: "#pricing" },
 ]
 
 export function Header() {
@@ -38,8 +38,12 @@ export function Header() {
         </nav>
 
         <div className="hidden md:flex items-center gap-4">
-          <Button variant="ghost" size="sm">Sign in</Button>
-          <Button size="sm">Get early access</Button>
+          <Button variant="ghost" size="sm" asChild>
+            <Link href="/auth/login">Sign in</Link>
+          </Button>
+          <Button size="sm" asChild>
+            <Link href="/auth/signup">Get early access</Link>
+          </Button>
         </div>
 
         {/* Mobile menu button */}
@@ -67,8 +71,12 @@ export function Header() {
               </Link>
             ))}
             <div className="flex flex-col gap-2 pt-4 border-t border-border">
-              <Button variant="ghost" size="sm">Sign in</Button>
-              <Button size="sm">Get early access</Button>
+              <Button variant="ghost" size="sm" asChild>
+                <Link href="/auth/login">Sign in</Link>
+              </Button>
+              <Button size="sm" asChild>
+                <Link href="/auth/signup">Get early access</Link>
+              </Button>
             </div>
           </nav>
         </div>
