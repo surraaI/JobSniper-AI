@@ -3,15 +3,27 @@
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useState } from "react"
-import { ArrowRight, CheckCircle } from "lucide-react"
+import { ArrowRight, CheckCircle, Loader2 } from "lucide-react"
+import { createClient } from "@/lib/supabase/client"
 
 export function CTA() {
   const [email, setEmail] = useState("")
   const [submitted, setSubmitted] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (email) {
+    if (!email) return
+    
+    setLoading(true)
+    setError(null)
+    
+    try {
+      // For now, just redirect to signup with email pre-filled
+      // In production, you could save to a waitlist table
+      window.location.href = `/auth/signup?email=${encodeURIComponent(email)}`
+    } catch {
       setSubmitted(true)
     }
   }
@@ -46,9 +58,15 @@ export function CTA() {
                   required
                   className="flex-1 bg-secondary border-border"
                 />
-                <Button type="submit" size="lg" className="whitespace-nowrap">
-                  Join waitlist
-                  <ArrowRight className="ml-2 w-4 h-4" />
+                <Button type="submit" size="lg" className="whitespace-nowrap" disabled={loading}>
+                  {loading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <>
+                      Join waitlist
+                      <ArrowRight className="ml-2 w-4 h-4" />
+                    </>
+                  )}
                 </Button>
               </form>
             )}
