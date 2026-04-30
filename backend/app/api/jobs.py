@@ -51,18 +51,26 @@ async def discover_jobs(
     from app.agents.scout import ScoutAgent
     
     scout = ScoutAgent()
-    try:
-        jobs = await scout.hunt(
-            query=query,
-            location=location,
-            remote_only=remote,
-            limit=limit,
-        )
-        return {"jobs": jobs, "count": len(jobs), "source": "live" if not settings.demo_mode else "demo"}
-    except Exception as e:
-        # Fallback to demo data
-        demo_jobs = get_demo_jobs(limit=limit)
-        return {"jobs": demo_jobs, "count": len(demo_jobs), "source": "demo", "error": str(e)}
+    jobs = await scout.hunt(
+        query=query,
+        location=location,
+        remote_only=remote if remote else False,
+        limit=limit,
+    )
+    
+    # If scout returns empty, ensure demo data is returned
+    if not jobs:
+        jobs = get_demo_jobs(limit=limit)
+        return {"jobs": jobs, "count": len(jobs), "source": "demo"}
+    
+    return {"jobs": jobs, "count": len(jobs), "source": "live" if settings.adzuna_app_id else "demo"}
+
+
+@router.get("/demo")
+async def get_demo_jobs_endpoint(limit: int = Query(10, le=50)):
+    """Get demo jobs directly for testing"""
+    jobs = get_demo_jobs(limit=limit)
+    return {"jobs": jobs, "count": len(jobs), "source": "demo"}
 
 
 @router.get("/applications")
