@@ -1,139 +1,157 @@
-"""
-Jobs API endpoints
-"""
+"""Jobs API endpoints"""
+
 from fastapi import APIRouter, HTTPException, Query
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel
 from datetime import datetime
-from enum import Enum
 
-from app.agents.scout import ScoutAgent
+from app.services.supabase import get_client
 from app.services.demo_data import get_demo_jobs
+from app.config import settings
 
 router = APIRouter()
 
 
-class JobStatus(str, Enum):
-    DISCOVERED = "discovered"
-    PENDING_APPROVAL = "pending_approval"
-    APPROVED = "approved"
-    APPLIED = "applied"
-    UNDER_REVIEW = "under_review"
-    ASSESSMENT = "assessment"
-    INTERVIEW_SCHEDULED = "interview_scheduled"
-    INTERVIEW = "interview"
-    OFFER = "offer"
-    REJECTED = "rejected"
-
-
 class Job(BaseModel):
     id: str
+    external_id: Optional[str] = None
+    source: str = "adzuna"
     company: str
-    position: str
-    location: str
-    salary: Optional[str] = None
+    title: str
     description: Optional[str] = None
-    url: str
-    source: str  # adzuna, theirstack, linkedin, upwork
-    match_score: Optional[int] = None
-    status: JobStatus = JobStatus.DISCOVERED
-    discovered_at: datetime
-    applied_at: Optional[datetime] = None
-    sentinel_update: Optional[str] = None
-    deadline: Optional[datetime] = None
-
-
-class JobSearchParams(BaseModel):
-    keywords: str
     location: Optional[str] = None
-    remote: bool = True
     salary_min: Optional[int] = None
     salary_max: Optional[int] = None
+    job_url: str
+    posted_at: Optional[datetime] = None
+    requirements: Optional[List[str]] = None
+    job_type: Optional[str] = None
+    remote_type: Optional[str] = None
+
+
+class Application(BaseModel):
+    id: str
+    job_id: str
+    status: str
+    match_score: Optional[int] = None
+    sentinel_update: Optional[str] = None
+    deadline: Optional[datetime] = None
+    applied_at: Optional[datetime] = None
+    job: Optional[Job] = None
 
 
 @router.get("/discover")
 async def discover_jobs(
-    keywords: str = Query(..., description="Job search keywords"),
+    query: Optional[str] = Query(None, description="Search query"),
     location: Optional[str] = Query(None, description="Location filter"),
-    remote: bool = Query(True, description="Include remote jobs"),
-    limit: int = Query(20, description="Max results")
+    remote: Optional[bool] = Query(None, description="Remote only"),
+    limit: int = Query(20, le=100),
 ):
-    """
-    Trigger the Scout agent to discover new job opportunities.
-    Falls back to demo data if external APIs fail.
-    """
-    scout = ScoutAgent()
+    """Discover new jobs using Scout agent"""
+    from app.agents.scout import ScoutAgent
     
+    scout = ScoutAgent()
     try:
-        jobs = await scout.discover(
-            keywords=keywords,
+        jobs = await scout.hunt(
+            query=query,
             location=location,
-            remote=remote,
-            limit=limit
+            remote_only=remote,
+            limit=limit,
         )
-        return {
-            "success": True,
-            "source": "live",
-            "count": len(jobs),
-            "jobs": jobs
-        }
+        return {"jobs": jobs, "count": len(jobs), "source": "live" if not settings.demo_mode else "demo"}
     except Exception as e:
         # Fallback to demo data
-        demo_jobs = get_demo_jobs(keywords=keywords, limit=limit)
-        return {
-            "success": True,
-            "source": "demo",
-            "fallback_reason": str(e),
-            "count": len(demo_jobs),
-            "jobs": demo_jobs
-        }
+        demo_jobs = get_demo_jobs(limit=limit)
+        return {"jobs": demo_jobs, "count": len(demo_jobs), "source": "demo", "error": str(e)}
 
 
 @router.get("/applications")
 async def get_applications(
-    user_id: str = Query(..., description="User ID"),
-    status: Optional[JobStatus] = Query(None, description="Filter by status")
+    user_id: str,
+    status: Optional[str] = Query(None),
 ):
-    """
-    Get all job applications for a user.
-    """
-    # TODO: Fetch from Supabase
-    demo_jobs = get_demo_jobs(limit=10)
-    
-    if status:
-        demo_jobs = [j for j in demo_jobs if j.get("status") == status]
-    
-    return {
-        "success": True,
-        "count": len(demo_jobs),
-        "applications": demo_jobs
-    }
+    """Get user's job applications"""
+    try:
+        client = await get_client()
+        query = client.table("applications").select("*, jobs(*)").eq("user_id", user_id)
+        
+        if status:
+            query = query.eq("status", status)
+        
+        result = await query.order("created_at", desc=True).execute()
+        return {"applications": result.data}
+    except Exception as e:
+        # Fallback to demo data
+        from app.services.demo_data import get_demo_applications
+        return {"applications": get_demo_applications(), "source": "demo"}
 
 
-@router.post("/approve/{job_id}")
-async def approve_job(job_id: str, user_id: str = Query(...)):
-    """
-    Approve a job for application (human-in-the-loop).
-    This triggers the Ghostwriter agent to prepare application materials.
-    """
-    # TODO: Update in Supabase, trigger Ghostwriter
-    return {
-        "success": True,
-        "job_id": job_id,
-        "status": "approved",
-        "message": "Job approved. Ghostwriter is preparing your application."
-    }
+@router.post("/applications/{job_id}/approve")
+async def approve_application(job_id: str, user_id: str):
+    """Approve a job application for submission"""
+    try:
+        client = await get_client()
+        
+        # Update application status
+        result = await client.table("applications").update({
+            "status": "approved",
+            "approved_at": datetime.utcnow().isoformat(),
+        }).eq("job_id", job_id).eq("user_id", user_id).execute()
+        
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Application not found")
+        
+        return {"status": "approved", "application": result.data[0]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/reject/{job_id}")
-async def reject_job(job_id: str, user_id: str = Query(...)):
-    """
-    Reject a discovered job (don't apply).
-    """
-    # TODO: Update in Supabase
-    return {
-        "success": True,
-        "job_id": job_id,
-        "status": "rejected",
-        "message": "Job removed from queue."
-    }
+@router.post("/applications/{job_id}/reject")
+async def reject_application(job_id: str, user_id: str):
+    """Reject a job application"""
+    try:
+        client = await get_client()
+        
+        result = await client.table("applications").update({
+            "status": "withdrawn",
+        }).eq("job_id", job_id).eq("user_id", user_id).execute()
+        
+        return {"status": "withdrawn", "application": result.data[0] if result.data else None}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/stats")
+async def get_job_stats(user_id: str):
+    """Get job application statistics"""
+    try:
+        client = await get_client()
+        result = await client.table("applications").select("status").eq("user_id", user_id).execute()
+        
+        stats = {
+            "total": len(result.data),
+            "applied": 0,
+            "interviews": 0,
+            "offers": 0,
+            "rejected": 0,
+            "pending": 0,
+        }
+        
+        for app in result.data:
+            status = app["status"]
+            if status in ["applied", "under_review"]:
+                stats["applied"] += 1
+            elif status in ["interview", "interview_scheduled", "assessment"]:
+                stats["interviews"] += 1
+            elif status == "offer":
+                stats["offers"] += 1
+            elif status == "rejected":
+                stats["rejected"] += 1
+            elif status in ["pending_approval", "approved"]:
+                stats["pending"] += 1
+        
+        return stats
+    except Exception as e:
+        return {"total": 0, "applied": 0, "interviews": 0, "offers": 0, "rejected": 0, "pending": 0}

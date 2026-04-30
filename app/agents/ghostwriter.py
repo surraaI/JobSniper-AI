@@ -1,199 +1,140 @@
 """
-Ghostwriter Agent - Application Materials Generator
-Creates tailored resumes and cover letters for each job.
+Ghostwriter Agent - Application Crafter
+Generates tailored resumes and cover letters using GPT-4o.
 """
-from typing import Optional
-from openai import AsyncOpenAI
 
-from app.config import get_settings
+from typing import Dict, Any
+
+from app.services.openai import get_completion
+from app.config import settings
 
 
 class GhostwriterAgent:
-    """
-    The Ghostwriter Agent crafts personalized application materials
-    tailored to each specific job posting.
+    """The Ghostwriter - crafts compelling application materials."""
     
-    Generates:
-    - Tailored resume highlights
-    - Custom cover letters
-    - LinkedIn connection messages
-    - Recruiter outreach messages
-    """
-    
-    def __init__(self):
-        self.settings = get_settings()
-        self.client = AsyncOpenAI(api_key=self.settings.openai_api_key) if self.settings.openai_api_key else None
-    
-    async def generate_cover_letter(
+    async def craft_application(
         self,
-        job: dict,
-        user_profile: dict
+        profile: Dict[str, Any],
+        job: Dict[str, Any],
+    ) -> Dict[str, str]:
+        """
+        Generate tailored cover letter and resume highlights.
+        """
+        cover_letter = await self.write_cover_letter(profile, job)
+        tailored_resume = await self.tailor_resume(profile, job)
+        
+        return {
+            "cover_letter": cover_letter,
+            "tailored_resume": tailored_resume,
+        }
+    
+    async def write_cover_letter(
+        self,
+        profile: Dict[str, Any],
+        job: Dict[str, Any],
     ) -> str:
-        """
-        Generate a tailored cover letter for a specific job.
-        """
-        if not self.client:
-            return self._template_cover_letter(job, user_profile)
+        """Generate a tailored cover letter"""
+        if settings.demo_mode or not settings.openai_api_key:
+            return self._demo_cover_letter(profile, job)
         
         try:
-            return await self._gpt_cover_letter(job, user_profile)
-        except Exception as e:
-            print(f"GPT cover letter failed: {e}")
-            return self._template_cover_letter(job, user_profile)
-    
-    async def _gpt_cover_letter(self, job: dict, user_profile: dict) -> str:
-        """
-        Use GPT-4o to generate a personalized cover letter.
-        """
-        system_prompt = """You are an expert career coach and writer. Generate a compelling, 
-personalized cover letter that:
-1. Opens with a strong hook mentioning the specific company
-2. Highlights 2-3 relevant experiences that match the job requirements
-3. Shows enthusiasm and cultural fit
-4. Closes with a clear call to action
+            prompt = f"""Write a compelling cover letter for this job application.
 
-Keep it concise (250-350 words). Be authentic, not generic.
-Do NOT use phrases like "I am writing to apply" or "I believe I am a perfect fit"."""
+CANDIDATE:
+- Name: {profile.get('full_name', 'Candidate')}
+- Skills: {', '.join(profile.get('skills', []))}
+- Experience: {profile.get('experience_years', 'Several')} years
+- Background: {profile.get('resume_text', '')[:1000]}
 
-        user_prompt = f"""
-Job Details:
+JOB:
+- Title: {job.get('title')}
 - Company: {job.get('company')}
-- Position: {job.get('position')}
 - Description: {job.get('description', '')[:1500]}
 
-Candidate Profile:
-- Name: {user_profile.get('full_name', 'Candidate')}
-- Skills: {', '.join(user_profile.get('skills', []))}
-- Experience: {user_profile.get('experience_years', 'several')} years
-- Resume Summary: {user_profile.get('resume_text', '')[:1000]}
+Write a professional, engaging cover letter that:
+1. Opens with a strong hook
+2. Highlights relevant experience
+3. Shows enthusiasm for the company
+4. Ends with a clear call to action
+5. Is 250-350 words
 
-Generate a cover letter that authentically represents this candidate for this specific role."""
-
-        response = await self.client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=0.7
-        )
-        
-        return response.choices[0].message.content
+Use a confident but not arrogant tone. Be specific about skills that match."""
+            
+            return await get_completion(prompt, max_tokens=800)
+        except Exception as e:
+            print(f"[Ghostwriter] Cover letter error: {e}")
+            return self._demo_cover_letter(profile, job)
     
-    def _template_cover_letter(self, job: dict, user_profile: dict) -> str:
-        """
-        Fallback: Template-based cover letter.
-        """
-        name = user_profile.get("full_name", "Candidate")
+    async def tailor_resume(
+        self,
+        profile: Dict[str, Any],
+        job: Dict[str, Any],
+    ) -> str:
+        """Generate tailored resume highlights/summary"""
+        if settings.demo_mode or not settings.openai_api_key:
+            return self._demo_resume_summary(profile, job)
+        
+        try:
+            prompt = f"""Create a tailored professional summary and key achievements for this job.
+
+CANDIDATE RESUME:
+{profile.get('resume_text', 'Experienced professional')}
+
+TARGET JOB:
+- Title: {job.get('title')}
+- Company: {job.get('company')}
+- Requirements: {job.get('description', '')[:1000]}
+
+Create:
+1. A compelling 3-4 sentence professional summary tailored to this role
+2. 4-5 key achievements that align with the job requirements
+3. Suggested skills to emphasize
+
+Format as plain text, ready to insert into a resume."""
+            
+            return await get_completion(prompt, max_tokens=600)
+        except Exception as e:
+            print(f"[Ghostwriter] Resume error: {e}")
+            return self._demo_resume_summary(profile, job)
+    
+    def _demo_cover_letter(self, profile: Dict, job: Dict) -> str:
+        """Generate a demo cover letter"""
+        name = profile.get("full_name", "Applicant")
         company = job.get("company", "your company")
-        position = job.get("position", "this position")
-        skills = user_profile.get("skills", [])[:3]
+        title = job.get("title", "this position")
+        skills = profile.get("skills", ["problem-solving", "collaboration"])[:3]
         
         return f"""Dear Hiring Manager,
 
-I am excited to apply for the {position} role at {company}. With my background in {', '.join(skills)}, I am confident I can make a meaningful contribution to your team.
+I am excited to apply for the {title} position at {company}. With my background in {', '.join(skills)}, I am confident I can make a meaningful contribution to your team.
 
-Throughout my career, I have developed strong expertise that aligns well with this opportunity. I am particularly drawn to {company}'s mission and would welcome the chance to bring my skills to your organization.
+Throughout my career, I have consistently delivered results by combining technical expertise with strong communication skills. I am particularly drawn to {company}'s mission and believe my experience aligns well with your needs.
 
-I would love to discuss how my experience can benefit your team. Thank you for considering my application.
+My key strengths include:
+• Strong proficiency in {skills[0] if skills else 'relevant technologies'}
+• Proven track record of delivering projects on time
+• Excellent collaboration and communication abilities
+• Passion for continuous learning and improvement
+
+I would welcome the opportunity to discuss how my skills and experience can benefit {company}. Thank you for considering my application.
 
 Best regards,
 {name}"""
     
-    async def generate_resume_highlights(
-        self,
-        job: dict,
-        user_profile: dict
-    ) -> list[str]:
-        """
-        Generate tailored resume bullet points for a specific job.
-        """
-        if not self.client:
-            return user_profile.get("skills", [])[:5]
+    def _demo_resume_summary(self, profile: Dict, job: Dict) -> str:
+        """Generate a demo resume summary"""
+        title = job.get("title", "Professional")
+        skills = profile.get("skills", [])[:5]
+        years = profile.get("experience_years", "several")
         
-        try:
-            system_prompt = """You are a resume optimization expert. Generate 5 powerful, 
-quantified resume bullet points that would be most relevant for this job.
-Use the STAR method (Situation, Task, Action, Result) where possible.
-Each bullet should start with a strong action verb.
-Return as a JSON array of strings."""
+        return f"""PROFESSIONAL SUMMARY
+Results-driven {title} with {years} years of experience in {', '.join(skills[:2]) if skills else 'technology'}. Proven ability to deliver high-impact solutions while collaborating effectively with cross-functional teams. Passionate about innovation and continuous improvement.
 
-            user_prompt = f"""
-Job: {job.get('position')} at {job.get('company')}
-Requirements: {job.get('description', '')[:1000]}
+KEY ACHIEVEMENTS
+• Led projects resulting in significant efficiency improvements
+• Collaborated with teams to deliver solutions ahead of schedule
+• Implemented best practices that improved code quality and team productivity
+• Mentored junior team members and contributed to knowledge sharing
 
-Candidate Skills: {', '.join(user_profile.get('skills', []))}
-Experience: {user_profile.get('experience_years')} years
-
-Generate 5 tailored resume bullet points."""
-
-            response = await self.client.chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                response_format={"type": "json_object"},
-                temperature=0.5
-            )
-            
-            import json
-            data = json.loads(response.choices[0].message.content)
-            return data.get("bullets", data.get("highlights", []))
-        
-        except Exception as e:
-            print(f"GPT resume highlights failed: {e}")
-            return user_profile.get("skills", [])[:5]
-    
-    async def generate_outreach_message(
-        self,
-        job: dict,
-        user_profile: dict,
-        message_type: str = "linkedin"  # "linkedin", "email", "recruiter"
-    ) -> str:
-        """
-        Generate a personalized outreach message.
-        """
-        if not self.client:
-            return self._template_outreach(job, user_profile, message_type)
-        
-        try:
-            templates = {
-                "linkedin": "a LinkedIn connection request message (max 200 characters)",
-                "email": "a brief email to the hiring manager (150 words max)",
-                "recruiter": "a message to a recruiter about this opportunity (100 words max)"
-            }
-            
-            system_prompt = f"""Generate {templates.get(message_type, templates['linkedin'])}.
-Be personable, specific to the company, and include a soft ask. No generic phrases."""
-
-            user_prompt = f"""
-Company: {job.get('company')}
-Role: {job.get('position')}
-Candidate: {user_profile.get('full_name')} - {user_profile.get('experience_years')} years experience in {', '.join(user_profile.get('skills', [])[:3])}"""
-
-            response = await self.client.chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                temperature=0.7
-            )
-            
-            return response.choices[0].message.content
-        
-        except Exception as e:
-            print(f"GPT outreach failed: {e}")
-            return self._template_outreach(job, user_profile, message_type)
-    
-    def _template_outreach(self, job: dict, user_profile: dict, message_type: str) -> str:
-        """Fallback template messages."""
-        name = user_profile.get("full_name", "").split()[0] if user_profile.get("full_name") else "there"
-        company = job.get("company", "your company")
-        position = job.get("position", "the open role")
-        
-        if message_type == "linkedin":
-            return f"Hi! I'm interested in the {position} role at {company}. Would love to connect!"
-        else:
-            return f"Hi, I'm reaching out about the {position} opportunity at {company}. I'd love to learn more about the role."
+SKILLS TO EMPHASIZE
+{', '.join(skills) if skills else 'Relevant technical and soft skills'}"""

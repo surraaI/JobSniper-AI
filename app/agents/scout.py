@@ -1,188 +1,152 @@
 """
-Scout Agent - Job Discovery
-Scans multiple job sources to find opportunities matching user preferences.
+Scout Agent - Opportunity Hunter
+Scans job boards for matching opportunities using Adzuna API with demo fallback.
 """
-import httpx
-from typing import Optional
-from datetime import datetime
-import hashlib
 
-from app.config import get_settings
+import httpx
+from typing import Optional, List, Dict, Any
+from datetime import datetime
+
+from app.config import settings
 from app.services.demo_data import get_demo_jobs
 
 
 class ScoutAgent:
-    """
-    The Scout Agent continuously scans job boards and APIs
-    to discover new opportunities.
-    
-    Sources:
-    - Adzuna API (primary - real-time job data)
-    - TheirStack API (tech company jobs)
-    - Fallback: Demo data for hackathon safety
-    """
+    """The Scout - discovers job opportunities across multiple sources."""
     
     def __init__(self):
-        self.settings = get_settings()
-        self.client = httpx.AsyncClient(timeout=30.0)
+        self.adzuna_base_url = "https://api.adzuna.com/v1/api/jobs"
+        self.adzuna_app_id = settings.adzuna_app_id
+        self.adzuna_api_key = settings.adzuna_api_key
     
-    async def discover(
+    async def hunt(
         self,
-        keywords: str,
+        query: Optional[str] = None,
         location: Optional[str] = None,
-        remote: bool = True,
-        limit: int = 20
-    ) -> list[dict]:
+        remote_only: bool = False,
+        limit: int = 20,
+    ) -> List[Dict[str, Any]]:
         """
-        Discover jobs from all configured sources.
-        Uses fallback to demo data if APIs fail.
+        Hunt for jobs matching the criteria.
+        Falls back to demo data if API unavailable.
         """
-        all_jobs = []
-        
-        # Try Adzuna first
         try:
-            adzuna_jobs = await self._search_adzuna(keywords, location, remote, limit)
-            all_jobs.extend(adzuna_jobs)
+            if not self.adzuna_app_id or not self.adzuna_api_key:
+                raise ValueError("Adzuna credentials not configured")
+            
+            jobs = await self._search_adzuna(query, location, remote_only, limit)
+            return jobs
         except Exception as e:
-            print(f"Adzuna API failed: {e}")
-        
-        # Try TheirStack
-        try:
-            theirstack_jobs = await self._search_theirstack(keywords, limit)
-            all_jobs.extend(theirstack_jobs)
-        except Exception as e:
-            print(f"TheirStack API failed: {e}")
-        
-        # If no jobs found, use demo data
-        if not all_jobs:
-            all_jobs = get_demo_jobs(keywords=keywords, limit=limit)
-        
-        # Deduplicate by job URL
-        seen_urls = set()
-        unique_jobs = []
-        for job in all_jobs:
-            if job["url"] not in seen_urls:
-                seen_urls.add(job["url"])
-                unique_jobs.append(job)
-        
-        return unique_jobs[:limit]
+            print(f"[Scout] API error, using demo data: {e}")
+            return get_demo_jobs(limit=limit)
     
     async def _search_adzuna(
         self,
-        keywords: str,
+        query: Optional[str],
         location: Optional[str],
-        remote: bool,
-        limit: int
-    ) -> list[dict]:
-        """
-        Search Adzuna API for jobs.
-        https://developer.adzuna.com/
-        """
-        if not self.settings.adzuna_app_id or not self.settings.adzuna_api_key:
-            raise ValueError("Adzuna credentials not configured")
-        
-        # Build query
-        what = keywords
-        if remote:
-            what += " remote"
+        remote_only: bool,
+        limit: int,
+    ) -> List[Dict[str, Any]]:
+        """Search Adzuna API for jobs"""
+        country = "us"  # Default to US
         
         params = {
-            "app_id": self.settings.adzuna_app_id,
-            "app_key": self.settings.adzuna_api_key,
-            "results_per_page": limit,
-            "what": what,
-            "content-type": "application/json"
+            "app_id": self.adzuna_app_id,
+            "app_key": self.adzuna_api_key,
+            "results_per_page": min(limit, 50),
+            "content-type": "application/json",
         }
+        
+        if query:
+            params["what"] = query
         
         if location:
             params["where"] = location
         
-        # Adzuna US endpoint
-        url = "https://api.adzuna.com/v1/api/jobs/us/search/1"
+        if remote_only:
+            params["what"] = f"{params.get('what', '')} remote".strip()
         
-        response = await self.client.get(url, params=params)
-        response.raise_for_status()
-        data = response.json()
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.adzuna_base_url}/{country}/search/1",
+                params=params,
+                timeout=10.0,
+            )
+            response.raise_for_status()
+            data = response.json()
         
         jobs = []
-        for item in data.get("results", []):
-            job_id = hashlib.md5(item["redirect_url"].encode()).hexdigest()[:12]
-            jobs.append({
-                "id": f"adzuna_{job_id}",
-                "company": item.get("company", {}).get("display_name", "Unknown"),
-                "position": item.get("title", "Unknown Position"),
-                "location": item.get("location", {}).get("display_name", "Unknown"),
-                "salary": self._format_salary(
-                    item.get("salary_min"),
-                    item.get("salary_max")
-                ),
-                "description": item.get("description", "")[:500],
-                "url": item.get("redirect_url", ""),
-                "source": "adzuna",
-                "discovered_at": datetime.utcnow().isoformat(),
-                "status": "discovered"
-            })
+        for result in data.get("results", []):
+            job = self._normalize_adzuna_job(result)
+            jobs.append(job)
         
         return jobs
     
-    async def _search_theirstack(
+    def _normalize_adzuna_job(self, raw: Dict) -> Dict[str, Any]:
+        """Normalize Adzuna job data to our schema"""
+        salary_min = None
+        salary_max = None
+        
+        if raw.get("salary_min"):
+            salary_min = int(raw["salary_min"])
+        if raw.get("salary_max"):
+            salary_max = int(raw["salary_max"])
+        
+        return {
+            "external_id": raw.get("id"),
+            "source": "adzuna",
+            "company": raw.get("company", {}).get("display_name", "Unknown"),
+            "title": raw.get("title", ""),
+            "description": raw.get("description", ""),
+            "location": raw.get("location", {}).get("display_name", ""),
+            "salary_min": salary_min,
+            "salary_max": salary_max,
+            "job_url": raw.get("redirect_url", ""),
+            "posted_at": raw.get("created"),
+            "job_type": raw.get("contract_type"),
+            "remote_type": "remote" if "remote" in raw.get("title", "").lower() else None,
+        }
+    
+    async def search_theirstack(
         self,
-        keywords: str,
-        limit: int
-    ) -> list[dict]:
+        query: Optional[str] = None,
+        limit: int = 20,
+    ) -> List[Dict[str, Any]]:
         """
-        Search TheirStack API for tech company jobs.
-        https://theirstack.com/
+        Search TheirStack API for tech jobs.
+        Secondary source for startup/tech roles.
         """
-        if not self.settings.theirstack_api_key:
-            raise ValueError("TheirStack API key not configured")
+        if not settings.theirstack_api_key:
+            return []
         
-        headers = {
-            "Authorization": f"Bearer {self.settings.theirstack_api_key}",
-            "Content-Type": "application/json"
-        }
-        
-        payload = {
-            "job_title_or": [keywords],
-            "limit": limit,
-            "posted_at_max_age_days": 7
-        }
-        
-        url = "https://api.theirstack.com/v1/jobs/search"
-        
-        response = await self.client.post(url, json=payload, headers=headers)
-        response.raise_for_status()
-        data = response.json()
-        
-        jobs = []
-        for item in data.get("data", []):
-            job_id = hashlib.md5(item.get("url", "").encode()).hexdigest()[:12]
-            jobs.append({
-                "id": f"theirstack_{job_id}",
-                "company": item.get("company_name", "Unknown"),
-                "position": item.get("job_title", "Unknown Position"),
-                "location": item.get("location", "Remote"),
-                "salary": item.get("salary_string", None),
-                "description": item.get("description", "")[:500],
-                "url": item.get("url", ""),
-                "source": "theirstack",
-                "discovered_at": datetime.utcnow().isoformat(),
-                "status": "discovered"
-            })
-        
-        return jobs
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    "https://api.theirstack.com/v1/jobs",
+                    headers={"Authorization": f"Bearer {settings.theirstack_api_key}"},
+                    params={"q": query, "limit": limit},
+                    timeout=10.0,
+                )
+                response.raise_for_status()
+                data = response.json()
+            
+            return [self._normalize_theirstack_job(j) for j in data.get("jobs", [])]
+        except Exception as e:
+            print(f"[Scout] TheirStack error: {e}")
+            return []
     
-    def _format_salary(self, min_salary: Optional[int], max_salary: Optional[int]) -> Optional[str]:
-        """Format salary range as string."""
-        if not min_salary and not max_salary:
-            return None
-        
-        if min_salary and max_salary:
-            return f"${min_salary:,} - ${max_salary:,}"
-        elif min_salary:
-            return f"${min_salary:,}+"
-        else:
-            return f"Up to ${max_salary:,}"
-    
-    async def close(self):
-        await self.client.aclose()
+    def _normalize_theirstack_job(self, raw: Dict) -> Dict[str, Any]:
+        """Normalize TheirStack job data"""
+        return {
+            "external_id": raw.get("id"),
+            "source": "theirstack",
+            "company": raw.get("company_name", "Unknown"),
+            "title": raw.get("title", ""),
+            "description": raw.get("description", ""),
+            "location": raw.get("location", ""),
+            "salary_min": raw.get("salary_min"),
+            "salary_max": raw.get("salary_max"),
+            "job_url": raw.get("url", ""),
+            "posted_at": raw.get("posted_at"),
+            "remote_type": raw.get("remote_type"),
+        }

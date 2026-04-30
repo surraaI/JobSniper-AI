@@ -1,204 +1,212 @@
-"""
-Demo Data Service - Fallback data for hackathon safety
-Provides realistic job data when external APIs are unavailable.
-"""
+"""Demo data for fallback when APIs are unavailable"""
+
+from typing import List, Dict, Any
 from datetime import datetime, timedelta
-from typing import Optional
 import random
+import uuid
 
 
-# Pre-populated demo jobs for instant fallback
-DEMO_JOBS = [
-    {
-        "id": "demo_stripe_1",
-        "company": "Stripe",
-        "position": "Senior Frontend Engineer",
-        "location": "San Francisco, CA (Remote)",
-        "salary": "$180,000 - $220,000",
-        "description": "Join Stripe's Dashboard team to build the future of online payments. You'll work on React-based interfaces used by millions of businesses worldwide. Strong TypeScript skills required.",
-        "url": "https://stripe.com/jobs",
-        "source": "demo",
-        "discovered_at": (datetime.utcnow() - timedelta(hours=2)).isoformat(),
-        "status": "discovered",
-        "match_score": 94
-    },
-    {
-        "id": "demo_vercel_1",
-        "company": "Vercel",
-        "position": "Staff Software Engineer",
-        "location": "Remote",
-        "salary": "$200,000 - $250,000",
-        "description": "Help build the future of web development at Vercel. Work on Next.js, Edge Functions, and developer tools. Looking for engineers passionate about DX.",
-        "url": "https://vercel.com/careers",
-        "source": "demo",
-        "discovered_at": (datetime.utcnow() - timedelta(hours=4)).isoformat(),
-        "status": "discovered",
-        "match_score": 91
-    },
-    {
-        "id": "demo_linear_1",
-        "company": "Linear",
-        "position": "Full Stack Developer",
-        "location": "Remote (US/EU)",
-        "salary": "$150,000 - $190,000",
-        "description": "Build beautiful, performant software at Linear. We're creating the best issue tracking tool for modern software teams. React, TypeScript, GraphQL experience preferred.",
-        "url": "https://linear.app/careers",
-        "source": "demo",
-        "discovered_at": (datetime.utcnow() - timedelta(hours=6)).isoformat(),
-        "status": "discovered",
-        "match_score": 88
-    },
-    {
-        "id": "demo_notion_1",
-        "company": "Notion",
-        "position": "Product Engineer",
-        "location": "New York, NY (Hybrid)",
-        "salary": "$170,000 - $210,000",
-        "description": "Shape the future of productivity tools at Notion. You'll work across the full stack building features that millions of users love. React, Node.js, PostgreSQL.",
-        "url": "https://notion.so/careers",
-        "source": "demo",
-        "discovered_at": (datetime.utcnow() - timedelta(hours=8)).isoformat(),
-        "status": "discovered",
-        "match_score": 86
-    },
-    {
-        "id": "demo_anthropic_1",
-        "company": "Anthropic",
-        "position": "ML Engineer",
-        "location": "San Francisco, CA",
-        "salary": "$250,000 - $350,000",
-        "description": "Work on cutting-edge AI safety research at Anthropic. Help build Claude and advance the field of beneficial AI. Strong ML/Python background required.",
-        "url": "https://anthropic.com/careers",
-        "source": "demo",
-        "discovered_at": (datetime.utcnow() - timedelta(hours=10)).isoformat(),
-        "status": "discovered",
-        "match_score": 79
-    },
-    {
-        "id": "demo_figma_1",
-        "company": "Figma",
-        "position": "Senior Software Engineer",
-        "location": "San Francisco, CA",
-        "salary": "$175,000 - $225,000",
-        "description": "Build the collaborative design tool used by designers worldwide. Work on real-time collaboration, WebGL rendering, and performance optimization.",
-        "url": "https://figma.com/careers",
-        "source": "demo",
-        "discovered_at": (datetime.utcnow() - timedelta(hours=12)).isoformat(),
-        "status": "discovered",
-        "match_score": 82
-    },
-    {
-        "id": "demo_bending_1",
-        "company": "Bending Spoons",
-        "position": "Product Intern - Evernote",
-        "location": "Milan, Italy (Remote)",
-        "salary": "€40,000 - €50,000",
-        "description": "Join the team behind Evernote and other popular apps. Work on product development and help shape features used by millions. Great learning opportunity.",
-        "url": "https://bendingspoons.com/careers",
-        "source": "demo",
-        "discovered_at": (datetime.utcnow() - timedelta(hours=14)).isoformat(),
-        "status": "discovered",
-        "match_score": 85
-    },
-    {
-        "id": "demo_plaid_1",
-        "company": "Plaid",
-        "position": "Software Engineer",
-        "location": "Remote",
-        "salary": "$160,000 - $200,000",
-        "description": "Build the infrastructure that powers fintech. Work on APIs connecting thousands of financial institutions. Python, Go, or Java experience required.",
-        "url": "https://plaid.com/careers",
-        "source": "demo",
-        "discovered_at": (datetime.utcnow() - timedelta(hours=16)).isoformat(),
-        "status": "discovered",
-        "match_score": 83
-    },
-    {
-        "id": "demo_datadog_1",
-        "company": "Datadog",
-        "position": "Frontend Engineer",
-        "location": "Boston, MA (Hybrid)",
-        "salary": "$140,000 - $180,000",
-        "description": "Build dashboards and visualizations for the leading observability platform. React, TypeScript, data visualization experience preferred.",
-        "url": "https://datadog.com/careers",
-        "source": "demo",
-        "discovered_at": (datetime.utcnow() - timedelta(hours=18)).isoformat(),
-        "status": "discovered",
-        "match_score": 85
-    },
-    {
-        "id": "demo_openai_1",
-        "company": "OpenAI",
-        "position": "Research Engineer",
-        "location": "San Francisco, CA",
-        "salary": "$300,000 - $400,000",
-        "description": "Push the boundaries of AI research. Work on large language models, safety, and deployment. PhD or equivalent experience in ML required.",
-        "url": "https://openai.com/careers",
-        "source": "demo",
-        "discovered_at": (datetime.utcnow() - timedelta(hours=20)).isoformat(),
-        "status": "discovered",
-        "match_score": 75
-    }
-]
-
-
-def get_demo_jobs(
-    keywords: Optional[str] = None,
-    location: Optional[str] = None,
-    limit: int = 20
-) -> list[dict]:
-    """
-    Get demo jobs, optionally filtered by keywords.
-    """
-    jobs = DEMO_JOBS.copy()
+def get_demo_jobs(limit: int = 20) -> List[Dict[str, Any]]:
+    """Return demo job listings"""
     
-    if keywords:
-        keywords_lower = keywords.lower()
-        jobs = [
-            j for j in jobs
-            if keywords_lower in j["position"].lower()
-            or keywords_lower in j["description"].lower()
-            or keywords_lower in j["company"].lower()
-        ]
+    jobs = [
+        {
+            "external_id": "demo_1",
+            "source": "demo",
+            "company": "Stripe",
+            "title": "Senior Frontend Engineer",
+            "description": "Join Stripe's frontend team to build the future of internet commerce. You'll work on our dashboard, checkout flows, and developer tools using React, TypeScript, and modern web technologies.",
+            "location": "San Francisco, CA (Remote)",
+            "salary_min": 180000,
+            "salary_max": 220000,
+            "job_url": "https://stripe.com/jobs/example",
+            "posted_at": (datetime.utcnow() - timedelta(days=2)).isoformat(),
+            "job_type": "full_time",
+            "remote_type": "remote",
+        },
+        {
+            "external_id": "demo_2",
+            "source": "demo",
+            "company": "Vercel",
+            "title": "Staff Software Engineer",
+            "description": "Help build the platform that powers the modern web. Work on Next.js, our edge network, and developer experience tools. Strong TypeScript and distributed systems experience required.",
+            "location": "Remote",
+            "salary_min": 200000,
+            "salary_max": 280000,
+            "job_url": "https://vercel.com/careers/example",
+            "posted_at": (datetime.utcnow() - timedelta(days=1)).isoformat(),
+            "job_type": "full_time",
+            "remote_type": "remote",
+        },
+        {
+            "external_id": "demo_3",
+            "source": "demo",
+            "company": "Linear",
+            "title": "Full Stack Developer",
+            "description": "Build the best issue tracking tool for modern software teams. We use React, TypeScript, GraphQL, and PostgreSQL. Focus on performance and beautiful UX.",
+            "location": "Remote (US/EU)",
+            "salary_min": 150000,
+            "salary_max": 200000,
+            "job_url": "https://linear.app/careers/example",
+            "posted_at": (datetime.utcnow() - timedelta(days=3)).isoformat(),
+            "job_type": "full_time",
+            "remote_type": "remote",
+        },
+        {
+            "external_id": "demo_4",
+            "source": "demo",
+            "company": "Notion",
+            "title": "Product Engineer",
+            "description": "Shape the future of productivity tools used by millions. Work on blocks, databases, and collaboration features. React, TypeScript, and a passion for great UX required.",
+            "location": "New York, NY (Hybrid)",
+            "salary_min": 170000,
+            "salary_max": 230000,
+            "job_url": "https://notion.so/careers/example",
+            "posted_at": (datetime.utcnow() - timedelta(days=4)).isoformat(),
+            "job_type": "full_time",
+            "remote_type": "hybrid",
+        },
+        {
+            "external_id": "demo_5",
+            "source": "demo",
+            "company": "Anthropic",
+            "title": "ML Engineer",
+            "description": "Work on cutting-edge AI safety research and build systems that help ensure AI benefits humanity. Strong ML fundamentals and Python experience required.",
+            "location": "San Francisco, CA",
+            "salary_min": 250000,
+            "salary_max": 400000,
+            "job_url": "https://anthropic.com/careers/example",
+            "posted_at": (datetime.utcnow() - timedelta(days=5)).isoformat(),
+            "job_type": "full_time",
+            "remote_type": "onsite",
+        },
+        {
+            "external_id": "demo_6",
+            "source": "demo",
+            "company": "Bending Spoons",
+            "title": "Product Intern - Evernote",
+            "description": "Join our product team working on Evernote. Help analyze user data, run experiments, and ship features that millions use daily. Strong analytical skills required.",
+            "location": "Milan, Italy (Remote)",
+            "salary_min": 40000,
+            "salary_max": 55000,
+            "job_url": "https://bendingspoons.com/careers/example",
+            "posted_at": (datetime.utcnow() - timedelta(hours=12)).isoformat(),
+            "job_type": "internship",
+            "remote_type": "remote",
+        },
+        {
+            "external_id": "demo_7",
+            "source": "demo",
+            "company": "Figma",
+            "title": "Senior Software Engineer",
+            "description": "Build the future of design tools. Work on real-time collaboration, performance, and new creative features. C++, WebAssembly, or TypeScript experience ideal.",
+            "location": "San Francisco, CA",
+            "salary_min": 175000,
+            "salary_max": 250000,
+            "job_url": "https://figma.com/careers/example",
+            "posted_at": (datetime.utcnow() - timedelta(days=6)).isoformat(),
+            "job_type": "full_time",
+            "remote_type": "hybrid",
+        },
+        {
+            "external_id": "demo_8",
+            "source": "demo",
+            "company": "Plaid",
+            "title": "Backend Engineer",
+            "description": "Build APIs that power fintech. Work on high-scale systems connecting millions of users to their financial data. Go, PostgreSQL, and distributed systems experience valued.",
+            "location": "Remote",
+            "salary_min": 160000,
+            "salary_max": 210000,
+            "job_url": "https://plaid.com/careers/example",
+            "posted_at": (datetime.utcnow() - timedelta(days=7)).isoformat(),
+            "job_type": "full_time",
+            "remote_type": "remote",
+        },
+        {
+            "external_id": "demo_9",
+            "source": "demo",
+            "company": "Datadog",
+            "title": "Frontend Engineer",
+            "description": "Build observability tools used by engineering teams worldwide. React, TypeScript, and data visualization experience. Love for performance and clean code.",
+            "location": "Boston, MA (Hybrid)",
+            "salary_min": 140000,
+            "salary_max": 190000,
+            "job_url": "https://datadog.com/careers/example",
+            "posted_at": (datetime.utcnow() - timedelta(days=8)).isoformat(),
+            "job_type": "full_time",
+            "remote_type": "hybrid",
+        },
+        {
+            "external_id": "demo_10",
+            "source": "demo",
+            "company": "Supabase",
+            "title": "Developer Advocate",
+            "description": "Help developers succeed with Supabase. Create tutorials, speak at conferences, and engage with the community. Strong communication and technical skills required.",
+            "location": "Remote (Global)",
+            "salary_min": 130000,
+            "salary_max": 170000,
+            "job_url": "https://supabase.com/careers/example",
+            "posted_at": (datetime.utcnow() - timedelta(days=2)).isoformat(),
+            "job_type": "full_time",
+            "remote_type": "remote",
+        },
+    ]
     
-    if location:
-        location_lower = location.lower()
-        jobs = [
-            j for j in jobs
-            if location_lower in j["location"].lower()
-            or "remote" in j["location"].lower()
-        ]
-    
-    # Randomize order slightly for variety
+    # Shuffle and limit
     random.shuffle(jobs)
-    
     return jobs[:limit]
 
 
-def get_demo_applications(user_id: str, limit: int = 10) -> list[dict]:
-    """
-    Get demo applications with various statuses.
-    """
-    statuses = [
-        ("applied", None, None),
-        ("under_review", "Application viewed by recruiter", None),
-        ("assessment", "Technical assessment received - BRGHT IQ Test", "2026-05-01"),
-        ("interview_scheduled", "Calendly link detected - Interview confirmed", None),
-        ("interview", "Completed first round, awaiting feedback", None),
-        ("offer", "Offer letter detected in inbox", None),
-        ("rejected", "Rejection email detected - 2 similar roles found", None),
+def get_demo_applications() -> List[Dict[str, Any]]:
+    """Return demo applications for UI testing"""
+    return [
+        {
+            "id": str(uuid.uuid4()),
+            "job_id": "demo_1",
+            "status": "interview_scheduled",
+            "match_score": 94,
+            "sentinel_update": "Calendly link detected - Interview confirmed",
+            "applied_at": (datetime.utcnow() - timedelta(days=5)).isoformat(),
+            "jobs": {
+                "company": "Stripe",
+                "title": "Senior Frontend Engineer",
+                "location": "San Francisco, CA (Remote)",
+                "salary_min": 180000,
+                "salary_max": 220000,
+                "job_url": "https://stripe.com/jobs/example",
+            },
+        },
+        {
+            "id": str(uuid.uuid4()),
+            "job_id": "demo_6",
+            "status": "assessment",
+            "match_score": 87,
+            "sentinel_update": "Technical assessment received - BRGHT IQ Test",
+            "deadline": (datetime.utcnow() + timedelta(days=2)).isoformat(),
+            "applied_at": (datetime.utcnow() - timedelta(days=3)).isoformat(),
+            "jobs": {
+                "company": "Bending Spoons",
+                "title": "Product Intern - Evernote",
+                "location": "Milan, Italy (Remote)",
+                "salary_min": 40000,
+                "salary_max": 55000,
+                "job_url": "https://bendingspoons.com/careers/example",
+            },
+        },
+        {
+            "id": str(uuid.uuid4()),
+            "job_id": "demo_2",
+            "status": "under_review",
+            "match_score": 91,
+            "sentinel_update": "Application viewed by recruiter",
+            "applied_at": (datetime.utcnow() - timedelta(days=4)).isoformat(),
+            "jobs": {
+                "company": "Vercel",
+                "title": "Staff Software Engineer",
+                "location": "Remote",
+                "salary_min": 200000,
+                "salary_max": 280000,
+                "job_url": "https://vercel.com/careers/example",
+            },
+        },
     ]
-    
-    applications = []
-    for i, job in enumerate(DEMO_JOBS[:limit]):
-        status, sentinel_update, deadline = statuses[i % len(statuses)]
-        app = job.copy()
-        app["status"] = status
-        app["applied_at"] = (datetime.utcnow() - timedelta(days=i+1)).isoformat()
-        if sentinel_update:
-            app["sentinel_update"] = sentinel_update
-        if deadline:
-            app["deadline"] = deadline
-        applications.append(app)
-    
-    return applications

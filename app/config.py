@@ -1,40 +1,37 @@
 """
-Configuration settings for JobSniper AI
+Configuration settings for JobSniper AI Backend
 """
+
 from pydantic_settings import BaseSettings
-from functools import lru_cache
+from typing import List
+import os
 
 
 class Settings(BaseSettings):
     # Supabase
-    supabase_url: str = ""
-    supabase_anon_key: str = ""
-    supabase_service_role_key: str = ""
+    supabase_url: str = os.getenv("SUPABASE_URL", "")
+    supabase_key: str = os.getenv("SUPABASE_ANON_KEY", "")
+    supabase_service_key: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
     
     # OpenAI
-    openai_api_key: str = ""
-    
-    # Job APIs
-    adzuna_app_id: str = ""
-    adzuna_api_key: str = ""
-    theirstack_api_key: str = ""
+    openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
     
     # Telegram
-    telegram_bot_token: str = ""
+    telegram_bot_token: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
     
-    # Gmail (OAuth2)
-    gmail_client_id: str = ""
-    gmail_client_secret: str = ""
+    # Job APIs
+    adzuna_app_id: str = os.getenv("ADZUNA_APP_ID", "")
+    adzuna_api_key: str = os.getenv("ADZUNA_API_KEY", "")
+    theirstack_api_key: str = os.getenv("THEIRSTACK_API_KEY", "")
     
-    # App settings
-    environment: str = "development"
-    demo_mode: bool = True  # Fallback to demo data if APIs fail
+    # CORS
+    cors_origins: List[str] = ["*"]
+    
+    # Demo mode (fallback when APIs unavailable)
+    demo_mode: bool = os.getenv("DEMO_MODE", "true").lower() == "true"
     
     class Config:
         env_file = ".env"
-        extra = "ignore"
 
 
-@lru_cache()
-def get_settings() -> Settings:
-    return Settings()
+settings = Settings()

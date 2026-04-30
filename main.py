@@ -1,21 +1,24 @@
 """
-JobSniper AI Backend - Multi-Agent Job Hunting System
+JobSniper AI Backend - FastAPI Application
+Multi-agent system for autonomous job hunting
 """
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import health, jobs, profile, agents, telegram
+from app.config import settings
 
 app = FastAPI(
     title="JobSniper AI",
-    description="AI-powered job hunting with multi-agent orchestration",
-    version="0.1.0"
+    description="Autonomous job hunting with AI agents",
+    version="0.1.0",
 )
 
-# CORS configuration
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -35,5 +38,5 @@ async def root():
         "name": "JobSniper AI",
         "version": "0.1.0",
         "status": "operational",
-        "agents": ["Scout", "Strategist", "Ghostwriter", "Liaison", "Sentinel"]
+        "agents": ["scout", "strategist", "ghostwriter", "liaison", "sentinel"],
     }

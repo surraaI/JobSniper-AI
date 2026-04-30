@@ -1,248 +1,230 @@
 """
-Sentinel Agent - Email Monitoring
-Monitors inbox for recruiter responses, interview invites, and status updates.
+Sentinel Agent - Inbox Guardian
+Monitors email for interview invites, status updates, and recruiter responses.
 """
-from typing import Optional
+
+from typing import Dict, Any, List, Optional
 from datetime import datetime
 import re
-from openai import AsyncOpenAI
 
-from app.config import get_settings
+from app.services.openai import get_completion
+from app.services.supabase import get_client
+from app.config import settings
 
 
 class SentinelAgent:
-    """
-    The Sentinel Agent monitors the user's email inbox for job-related
-    communications and extracts actionable information.
+    """The Sentinel - guards your inbox and never misses an opportunity."""
     
-    Detects:
-    - Interview invitations
-    - Calendly/scheduling links
-    - Technical assessment requests
-    - Rejection emails
-    - Offer letters
-    - Recruiter follow-ups
-    """
-    
-    def __init__(self):
-        self.settings = get_settings()
-        self.client = AsyncOpenAI(api_key=self.settings.openai_api_key) if self.settings.openai_api_key else None
-    
-    # Email patterns for quick detection
-    CALENDLY_PATTERN = re.compile(r'calendly\.com/[\w\-/]+')
-    INTERVIEW_KEYWORDS = [
-        'interview', 'schedule', 'availability', 'meet', 'call',
-        'zoom', 'teams', 'google meet', 'phone screen'
-    ]
-    ASSESSMENT_KEYWORDS = [
-        'assessment', 'coding challenge', 'take-home', 'technical test',
-        'hackerrank', 'codility', 'leetcode', 'codesignal'
-    ]
-    REJECTION_KEYWORDS = [
-        'unfortunately', 'not moving forward', 'other candidates',
-        'not a fit', 'position has been filled', 'decided not to proceed'
-    ]
-    OFFER_KEYWORDS = [
-        'offer letter', 'compensation package', 'start date',
-        'pleased to offer', 'excited to extend'
+    # Patterns for detecting important emails
+    INTERVIEW_PATTERNS = [
+        r"interview",
+        r"calendly",
+        r"schedule.*call",
+        r"meet.*team",
+        r"technical.*screen",
+        r"phone.*screen",
+        r"video.*call",
+        r"zoom.*meeting",
     ]
     
-    async def analyze_email(self, email: dict) -> dict:
-        """
-        Analyze an email to detect job-related content and extract actions.
-        
-        Args:
-            email: Dict with keys: subject, from, body, date
-        
-        Returns:
-            Analysis result with type, priority, actions, and extracted data
-        """
-        subject = email.get("subject", "").lower()
-        body = email.get("body", "").lower()
-        sender = email.get("from", "")
-        full_text = f"{subject} {body}"
-        
-        # Quick pattern matching first
-        result = self._quick_analyze(email, full_text)
-        
-        # If high priority or ambiguous, use GPT for deeper analysis
-        if result["priority"] == "high" or result["type"] == "unknown":
-            if self.client:
-                try:
-                    gpt_result = await self._gpt_analyze(email)
-                    result.update(gpt_result)
-                except Exception as e:
-                    print(f"GPT email analysis failed: {e}")
-        
-        return result
+    ASSESSMENT_PATTERNS = [
+        r"assessment",
+        r"coding.*challenge",
+        r"take.*home",
+        r"technical.*test",
+        r"hackerrank",
+        r"codility",
+        r"leetcode",
+    ]
     
-    def _quick_analyze(self, email: dict, full_text: str) -> dict:
+    OFFER_PATTERNS = [
+        r"offer",
+        r"congratulations",
+        r"pleased.*to.*extend",
+        r"welcome.*to.*the.*team",
+    ]
+    
+    REJECTION_PATTERNS = [
+        r"unfortunately",
+        r"not.*moving.*forward",
+        r"other.*candidates",
+        r"position.*filled",
+        r"not.*selected",
+    ]
+    
+    async def monitor(self, user_id: str) -> Dict[str, Any]:
         """
-        Quick pattern-based email analysis.
+        Monitor for updates and return any findings.
+        In production, this would connect to Gmail API.
+        For demo, returns simulated updates.
         """
-        result = {
-            "type": "unknown",
-            "priority": "low",
-            "actions": [],
-            "extracted_data": {}
+        if settings.demo_mode:
+            return self._demo_updates()
+        
+        # In production, implement Gmail API integration here
+        # For now, return empty updates
+        return {
+            "checked_at": datetime.utcnow().isoformat(),
+            "updates": [],
+            "alerts": [],
         }
+    
+    async def analyze_email(self, email_content: str) -> Dict[str, Any]:
+        """
+        Analyze an email to determine its type and extract key info.
+        """
+        content_lower = email_content.lower()
         
-        # Check for Calendly links
-        calendly_match = self.CALENDLY_PATTERN.search(full_text)
-        if calendly_match:
-            result["type"] = "interview_invite"
-            result["priority"] = "high"
-            result["actions"].append("schedule_interview")
-            result["extracted_data"]["calendly_link"] = calendly_match.group()
+        # Check patterns
+        email_type = "general"
+        priority = "normal"
+        deadline = None
+        action_required = False
         
-        # Check for interview keywords
-        if any(kw in full_text for kw in self.INTERVIEW_KEYWORDS):
-            result["type"] = "interview_invite"
-            result["priority"] = "high"
-            if "schedule_interview" not in result["actions"]:
-                result["actions"].append("respond_to_scheduling")
+        # Interview detection
+        for pattern in self.INTERVIEW_PATTERNS:
+            if re.search(pattern, content_lower):
+                email_type = "interview_invite"
+                priority = "high"
+                action_required = True
+                break
         
-        # Check for assessment keywords
-        if any(kw in full_text for kw in self.ASSESSMENT_KEYWORDS):
-            result["type"] = "assessment"
-            result["priority"] = "high"
-            result["actions"].append("complete_assessment")
+        # Assessment detection
+        if email_type == "general":
+            for pattern in self.ASSESSMENT_PATTERNS:
+                if re.search(pattern, content_lower):
+                    email_type = "assessment"
+                    priority = "high"
+                    action_required = True
+                    deadline = self._extract_deadline(email_content)
+                    break
+        
+        # Offer detection
+        if email_type == "general":
+            for pattern in self.OFFER_PATTERNS:
+                if re.search(pattern, content_lower):
+                    email_type = "offer"
+                    priority = "urgent"
+                    action_required = True
+                    break
+        
+        # Rejection detection
+        if email_type == "general":
+            for pattern in self.REJECTION_PATTERNS:
+                if re.search(pattern, content_lower):
+                    email_type = "rejection"
+                    priority = "low"
+                    break
+        
+        # Extract additional info using AI if available
+        summary = None
+        if settings.openai_api_key and not settings.demo_mode:
+            try:
+                summary = await self._summarize_email(email_content, email_type)
+            except:
+                pass
+        
+        return {
+            "type": email_type,
+            "priority": priority,
+            "action_required": action_required,
+            "deadline": deadline,
+            "summary": summary,
+        }
+    
+    def _extract_deadline(self, content: str) -> Optional[str]:
+        """Extract deadline from email content"""
+        # Simple date patterns
+        date_patterns = [
+            r"by\s+(\w+\s+\d{1,2})",
+            r"before\s+(\w+\s+\d{1,2})",
+            r"deadline[:\s]+(\w+\s+\d{1,2})",
+            r"due[:\s]+(\w+\s+\d{1,2})",
+        ]
+        
+        for pattern in date_patterns:
+            match = re.search(pattern, content, re.IGNORECASE)
+            if match:
+                return match.group(1)
+        
+        return None
+    
+    async def _summarize_email(self, content: str, email_type: str) -> str:
+        """Use AI to summarize the email"""
+        prompt = f"""Summarize this {email_type} email in 1-2 sentences. Extract the key action item if any.
+
+EMAIL:
+{content[:1000]}
+
+Be concise and focus on what the recipient needs to do."""
+        
+        return await get_completion(prompt, max_tokens=100)
+    
+    async def update_application_status(
+        self,
+        user_id: str,
+        company: str,
+        new_status: str,
+        update_text: str,
+        deadline: Optional[str] = None,
+    ) -> bool:
+        """Update application status based on email detection"""
+        try:
+            client = await get_client()
             
-            # Try to extract deadline
-            deadline_match = re.search(
-                r'(?:due|deadline|by|before|complete by)[:\s]+([A-Za-z]+\s+\d+|\d+/\d+/\d+|\d+\s+days?)',
-                full_text,
-                re.IGNORECASE
-            )
-            if deadline_match:
-                result["extracted_data"]["deadline"] = deadline_match.group(1)
-        
-        # Check for rejection
-        if any(kw in full_text for kw in self.REJECTION_KEYWORDS):
-            result["type"] = "rejection"
-            result["priority"] = "medium"
-            result["actions"].append("update_status")
-        
-        # Check for offer
-        if any(kw in full_text for kw in self.OFFER_KEYWORDS):
-            result["type"] = "offer"
-            result["priority"] = "high"
-            result["actions"].append("review_offer")
-        
-        return result
+            # Find matching application by company
+            apps = await client.table("applications").select("*, jobs(company)").eq("user_id", user_id).execute()
+            
+            for app in apps.data:
+                if app.get("jobs", {}).get("company", "").lower() == company.lower():
+                    update_data = {
+                        "status": new_status,
+                        "sentinel_update": update_text,
+                    }
+                    if deadline:
+                        update_data["deadline"] = deadline
+                    
+                    await client.table("applications").update(update_data).eq("id", app["id"]).execute()
+                    
+                    # Log the update
+                    await client.table("agent_logs").insert({
+                        "user_id": user_id,
+                        "agent": "sentinel",
+                        "action": "status_update",
+                        "application_id": app["id"],
+                        "output_data": {"new_status": new_status, "update": update_text},
+                    }).execute()
+                    
+                    return True
+            
+            return False
+        except Exception as e:
+            print(f"[Sentinel] Update error: {e}")
+            return False
     
-    async def _gpt_analyze(self, email: dict) -> dict:
-        """
-        Use GPT-4o for deeper email analysis.
-        """
-        system_prompt = """You are an AI assistant that analyzes job-related emails.
-Classify the email and extract key information.
-
-Return JSON with:
-{
-    "type": "interview_invite" | "assessment" | "rejection" | "offer" | "follow_up" | "status_update" | "other",
-    "company": "company name if found",
-    "position": "position title if found",
-    "summary": "brief summary of what action is needed",
-    "deadline": "any deadline mentioned",
-    "links": ["any relevant links found"]
-}"""
-
-        user_prompt = f"""
-Subject: {email.get('subject', '')}
-From: {email.get('from', '')}
-Body: {email.get('body', '')[:2000]}
-
-Analyze this job-related email."""
-
-        response = await self.client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
+    def _demo_updates(self) -> Dict[str, Any]:
+        """Return simulated updates for demo mode"""
+        return {
+            "checked_at": datetime.utcnow().isoformat(),
+            "updates": [
+                {
+                    "company": "Stripe",
+                    "type": "interview_invite",
+                    "summary": "Technical interview scheduled for next Tuesday",
+                    "priority": "high",
+                },
+                {
+                    "company": "Vercel",
+                    "type": "status_update",
+                    "summary": "Application moved to next round",
+                    "priority": "normal",
+                },
             ],
-            response_format={"type": "json_object"},
-            temperature=0.2
-        )
-        
-        import json
-        data = json.loads(response.choices[0].message.content)
-        
-        return {
-            "company": data.get("company"),
-            "position": data.get("position"),
-            "summary": data.get("summary"),
-            "extracted_data": {
-                "deadline": data.get("deadline"),
-                "links": data.get("links", [])
-            }
+            "alerts": [
+                {
+                    "message": "Bending Spoons assessment due in 2 days",
+                    "priority": "high",
+                    "deadline": "2026-05-01",
+                }
+            ],
         }
-    
-    async def generate_alert(self, analysis: dict, email: dict) -> dict:
-        """
-        Generate a Telegram/WhatsApp alert message based on email analysis.
-        """
-        priority_emoji = {
-            "high": "🔴",
-            "medium": "🟡",
-            "low": "🟢"
-        }
-        
-        type_headers = {
-            "interview_invite": "📅 Interview Invite!",
-            "assessment": "📝 Technical Assessment",
-            "rejection": "❌ Application Update",
-            "offer": "🎉 Offer Received!",
-            "follow_up": "📬 Recruiter Follow-up",
-            "status_update": "📊 Status Update"
-        }
-        
-        emoji = priority_emoji.get(analysis.get("priority", "low"), "🟢")
-        header = type_headers.get(analysis.get("type", "other"), "📧 New Email")
-        
-        message = f"{emoji} {header}\n\n"
-        
-        if analysis.get("company"):
-            message += f"🏢 {analysis['company']}\n"
-        if analysis.get("position"):
-            message += f"💼 {analysis['position']}\n"
-        
-        message += f"\n📧 Subject: {email.get('subject', 'No subject')}\n"
-        
-        if analysis.get("summary"):
-            message += f"\n💡 {analysis['summary']}\n"
-        
-        if analysis.get("extracted_data", {}).get("deadline"):
-            message += f"\n⏰ Deadline: {analysis['extracted_data']['deadline']}\n"
-        
-        if analysis.get("extracted_data", {}).get("calendly_link"):
-            message += f"\n🔗 Schedule: {analysis['extracted_data']['calendly_link']}\n"
-        
-        # Add action buttons info
-        if analysis.get("actions"):
-            message += f"\n📌 Actions needed: {', '.join(analysis['actions'])}"
-        
-        return {
-            "message": message,
-            "priority": analysis.get("priority", "low"),
-            "type": analysis.get("type", "other")
-        }
-    
-    async def batch_process_emails(self, emails: list[dict]) -> list[dict]:
-        """
-        Process multiple emails and return prioritized results.
-        """
-        results = []
-        for email in emails:
-            analysis = await self.analyze_email(email)
-            if analysis["type"] != "unknown":
-                results.append({
-                    "email": email,
-                    "analysis": analysis
-                })
-        
-        # Sort by priority (high first)
-        priority_order = {"high": 0, "medium": 1, "low": 2}
-        results.sort(key=lambda x: priority_order.get(x["analysis"]["priority"], 3))
-        
-        return results

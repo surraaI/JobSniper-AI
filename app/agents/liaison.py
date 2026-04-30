@@ -1,160 +1,143 @@
 """
-Liaison Agent - Application Submission
-Handles the actual submission of applications to job boards.
+Liaison Agent - Outreach Specialist
+Drafts personalized messages for recruiters and hiring managers.
 """
-from typing import Optional
-from datetime import datetime
 
-from app.config import get_settings
+from typing import Dict, Any
+
+from app.services.openai import get_completion
+from app.config import settings
 
 
 class LiaisonAgent:
-    """
-    The Liaison Agent handles the submission of approved applications.
+    """The Liaison - connects you with the right people."""
     
-    Responsibilities:
-    - Submit applications via job board APIs
-    - Send outreach messages to recruiters
-    - Track submission status
-    - Handle follow-ups
-    """
-    
-    def __init__(self):
-        self.settings = get_settings()
-    
-    async def submit_application(
+    async def draft_outreach(
         self,
-        job: dict,
-        user_profile: dict,
-        cover_letter: str,
-        resume_highlights: list[str]
-    ) -> dict:
+        profile: Dict[str, Any],
+        job: Dict[str, Any],
+        platform: str = "linkedin",
+    ) -> str:
         """
-        Submit an application for a job.
-        
-        Returns submission result with status and any error messages.
+        Draft a personalized outreach message for LinkedIn or email.
         """
-        source = job.get("source", "unknown")
-        
-        # Route to appropriate submission handler
-        handlers = {
-            "adzuna": self._submit_via_redirect,
-            "theirstack": self._submit_via_redirect,
-            "linkedin": self._submit_linkedin,
-            "upwork": self._submit_upwork,
-        }
-        
-        handler = handlers.get(source, self._submit_via_redirect)
+        if settings.demo_mode or not settings.openai_api_key:
+            return self._demo_outreach(profile, job, platform)
         
         try:
-            result = await handler(job, user_profile, cover_letter)
-            return {
-                "success": True,
-                "job_id": job.get("id"),
-                "submitted_at": datetime.utcnow().isoformat(),
-                "method": result.get("method", "redirect"),
-                "message": result.get("message", "Application submitted successfully")
-            }
+            prompt = self._build_outreach_prompt(profile, job, platform)
+            return await get_completion(prompt, max_tokens=400)
         except Exception as e:
-            return {
-                "success": False,
-                "job_id": job.get("id"),
-                "error": str(e),
-                "message": "Failed to submit application"
-            }
+            print(f"[Liaison] Outreach error: {e}")
+            return self._demo_outreach(profile, job, platform)
     
-    async def _submit_via_redirect(
+    def _build_outreach_prompt(
         self,
-        job: dict,
-        user_profile: dict,
-        cover_letter: str
-    ) -> dict:
-        """
-        For jobs that require applying via external site.
-        Returns the URL for manual application.
-        """
-        # In a real implementation, this could:
-        # 1. Open the application URL
-        # 2. Auto-fill form fields using browser automation
-        # 3. Upload resume and cover letter
+        profile: Dict,
+        job: Dict,
+        platform: str,
+    ) -> str:
+        """Build prompt for outreach message"""
+        char_limit = 300 if platform == "linkedin" else 500
         
-        return {
-            "method": "redirect",
-            "url": job.get("url"),
-            "message": f"Application materials prepared. Apply at: {job.get('url')}"
-        }
-    
-    async def _submit_linkedin(
-        self,
-        job: dict,
-        user_profile: dict,
-        cover_letter: str
-    ) -> dict:
-        """
-        Submit application via LinkedIn.
-        Note: Would require LinkedIn API access in production.
-        """
-        # LinkedIn Easy Apply would be handled here
-        return {
-            "method": "linkedin",
-            "message": "LinkedIn Easy Apply prepared"
-        }
-    
-    async def _submit_upwork(
-        self,
-        job: dict,
-        user_profile: dict,
-        cover_letter: str
-    ) -> dict:
-        """
-        Submit proposal on Upwork.
-        Note: Would require Upwork API access in production.
-        """
-        return {
-            "method": "upwork",
-            "message": "Upwork proposal prepared"
-        }
-    
-    async def send_follow_up(
-        self,
-        job: dict,
-        user_profile: dict,
-        days_since_application: int
-    ) -> dict:
-        """
-        Send a follow-up message for an application.
-        """
-        if days_since_application < 7:
-            return {
-                "success": False,
-                "message": "Too early for follow-up. Wait at least 7 days."
-            }
-        
-        # Generate follow-up message
-        follow_up = f"""Hi,
+        return f"""Write a personalized {platform} message to a recruiter about this job.
 
-I wanted to follow up on my application for the {job.get('position')} role at {job.get('company')} submitted {days_since_application} days ago.
+CANDIDATE:
+- Name: {profile.get('full_name', 'Candidate')}
+- Skills: {', '.join(profile.get('skills', [])[:5])}
+- Experience: {profile.get('experience_years', 'Several')} years
+
+JOB:
+- Title: {job.get('title')}
+- Company: {job.get('company')}
+
+Write a {'brief ' if platform == 'linkedin' else ''}professional message that:
+1. Opens with a personalized hook (not "I hope this finds you well")
+2. Shows genuine interest in the company
+3. Highlights 1-2 relevant qualifications
+4. Has a soft call to action
+5. Is under {char_limit} characters
+
+Tone: Confident, conversational, not desperate. No clichés."""
+    
+    def _demo_outreach(
+        self,
+        profile: Dict,
+        job: Dict,
+        platform: str,
+    ) -> str:
+        """Generate demo outreach message"""
+        name = profile.get("full_name", "").split()[0] if profile.get("full_name") else ""
+        company = job.get("company", "your company")
+        title = job.get("title", "the role")
+        skill = profile.get("skills", ["technology"])[0] if profile.get("skills") else "technology"
+        
+        if platform == "linkedin":
+            return f"""Hi! I noticed {company} is looking for a {title} and I'm genuinely excited about what you're building.
+
+With my background in {skill}, I've tackled similar challenges and would love to bring that experience to your team.
+
+Would you be open to a quick chat about the role?"""
+        else:
+            return f"""Subject: Excited about the {title} opportunity at {company}
+
+Hi,
+
+I came across the {title} position at {company} and wanted to reach out directly. Your team's work in this space really resonates with me.
+
+With {profile.get('experience_years', 'several')} years of experience in {skill}, I've delivered results that I believe align well with what you're looking for.
+
+I'd love the chance to discuss how I can contribute to {company}'s goals. Would you have 15 minutes for a quick call this week?
+
+Best,
+{name}"""
+    
+    async def draft_followup(
+        self,
+        profile: Dict[str, Any],
+        job: Dict[str, Any],
+        context: str = "no_response",
+    ) -> str:
+        """
+        Draft a follow-up message based on context.
+        context: 'no_response', 'after_interview', 'thank_you'
+        """
+        if settings.demo_mode or not settings.openai_api_key:
+            return self._demo_followup(profile, job, context)
+        
+        prompts = {
+            "no_response": "a polite follow-up after not hearing back for a week",
+            "after_interview": "a thoughtful follow-up after an interview",
+            "thank_you": "a thank-you note after an interview",
+        }
+        
+        try:
+            prompt = f"""Write {prompts.get(context, prompts['no_response'])} for this job application.
+
+CANDIDATE: {profile.get('full_name', 'Candidate')}
+JOB: {job.get('title')} at {job.get('company')}
+
+Keep it brief (under 150 words), professional, and memorable.
+No clichés. Sound human, not robotic."""
+            
+            return await get_completion(prompt, max_tokens=300)
+        except Exception as e:
+            return self._demo_followup(profile, job, context)
+    
+    def _demo_followup(self, profile: Dict, job: Dict, context: str) -> str:
+        """Generate demo follow-up"""
+        company = job.get("company", "your team")
+        title = job.get("title", "the role")
+        
+        if context == "thank_you":
+            return f"""Thank you for taking the time to speak with me about the {title} position. I enjoyed learning more about {company}'s vision and the team's approach.
+
+Our conversation reinforced my excitement about this opportunity. I'm confident my experience would enable me to contribute meaningfully from day one.
+
+Looking forward to the next steps!"""
+        else:
+            return f"""Hi! I wanted to follow up on my application for the {title} role at {company}.
 
 I remain very interested in this opportunity and would welcome the chance to discuss how my background aligns with your needs.
 
-Best regards,
-{user_profile.get('full_name', 'Candidate')}"""
-        
-        return {
-            "success": True,
-            "message": follow_up,
-            "action": "follow_up_prepared"
-        }
-    
-    async def track_application(self, job_id: str, user_id: str) -> dict:
-        """
-        Get the current status of an application.
-        """
-        # TODO: Fetch from Supabase
-        return {
-            "job_id": job_id,
-            "user_id": user_id,
-            "status": "applied",
-            "applied_at": datetime.utcnow().isoformat(),
-            "last_activity": datetime.utcnow().isoformat()
-        }
+Please let me know if there's any additional information I can provide."""
