@@ -2,12 +2,14 @@
 Configuration settings for JobSniper AI Backend
 """
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List
 import os
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
     # Supabase
     supabase_url: str = os.getenv("SUPABASE_URL", "")
     supabase_key: str = os.getenv("SUPABASE_ANON_KEY", "")
@@ -30,8 +32,4 @@ class Settings(BaseSettings):
     # Demo mode (fallback when APIs unavailable)
     demo_mode: bool = os.getenv("DEMO_MODE", "true").lower() == "true"
     
-    class Config:
-        env_file = ".env"
-
-
 settings = Settings()
