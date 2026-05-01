@@ -20,28 +20,41 @@ export default function SignupPage() {
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault()
+    console.log("[v0] Signup form submitted", { email, fullName })
     setLoading(true)
     setError(null)
 
-    const supabase = createClient()
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo:
-          process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ??
-          `${window.location.origin}/auth/callback`,
-        data: {
-          full_name: fullName,
+    try {
+      const supabase = createClient()
+      console.log("[v0] Supabase client created")
+      
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo:
+            process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ??
+            `${window.location.origin}/auth/callback`,
+          data: {
+            full_name: fullName,
+          },
         },
-      },
-    })
+      })
 
-    if (error) {
-      setError(error.message)
-      setLoading(false)
-    } else {
-      setSuccess(true)
+      console.log("[v0] Signup response", { data, error })
+
+      if (error) {
+        console.error("[v0] Signup error:", error)
+        setError(error.message)
+        setLoading(false)
+      } else {
+        console.log("[v0] Signup success!")
+        setSuccess(true)
+        setLoading(false)
+      }
+    } catch (err) {
+      console.error("[v0] Signup exception:", err)
+      setError("An unexpected error occurred")
       setLoading(false)
     }
   }
