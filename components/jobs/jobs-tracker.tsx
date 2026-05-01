@@ -204,6 +204,21 @@ const statusConfig: Record<JobStatus, { label: string; color: string; icon: Reac
     color: "bg-green-500/20 text-green-400",
     icon: <CheckCircle2 className="h-3.5 w-3.5" />,
   },
+  pending_approval: {
+    label: "Pending Approval",
+    color: "bg-yellow-500/20 text-yellow-400",
+    icon: <Clock className="h-3.5 w-3.5" />,
+  },
+  approved: {
+    label: "Approved",
+    color: "bg-emerald-500/20 text-emerald-400",
+    icon: <CheckCircle2 className="h-3.5 w-3.5" />,
+  },
+  withdrawn: {
+    label: "Withdrawn",
+    color: "bg-slate-500/20 text-slate-300",
+    icon: <XCircle className="h-3.5 w-3.5" />,
+  },
 }
 
 export function JobsTracker() {
@@ -347,6 +362,9 @@ export function JobsTracker() {
             <SelectItem value="assessment">Assessment</SelectItem>
             <SelectItem value="interview_scheduled">Interview Scheduled</SelectItem>
             <SelectItem value="interview">In Progress</SelectItem>
+            <SelectItem value="pending_approval">Pending Approval</SelectItem>
+            <SelectItem value="approved">Approved</SelectItem>
+            <SelectItem value="withdrawn">Withdrawn</SelectItem>
             <SelectItem value="offer">Offer</SelectItem>
             <SelectItem value="rejected">Rejected</SelectItem>
           </SelectContent>
