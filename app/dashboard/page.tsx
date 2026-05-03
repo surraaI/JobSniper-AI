@@ -122,12 +122,12 @@ export default function DashboardPage() {
   }
 
   const runScout = async () => {
-    if (!searchQuery) return
+    if (!searchQuery || !user) return
     setRunningAgent("scout")
     setAgentResult(null)
 
     try {
-      const result = await api.runScout(searchQuery, searchLocation || undefined)
+      const result = await api.runScout(searchQuery, searchLocation || undefined, user.id)
       setAgentResult(result.message)
     } catch (error) {
       setAgentResult(`Error: ${error instanceof Error ? error.message : "Failed to run Scout"}`)
@@ -137,12 +137,12 @@ export default function DashboardPage() {
   }
 
   const runFullPipeline = async () => {
-    if (!searchQuery) return
+    if (!searchQuery || !user) return
     setRunningAgent("pipeline")
     setAgentResult(null)
 
     try {
-      const result = await api.runFullPipeline(searchQuery, searchLocation || undefined)
+      const result = await api.runFullPipeline(searchQuery, searchLocation || undefined, user.id)
       setAgentResult(result.message)
     } catch (error) {
       setAgentResult(`Error: ${error instanceof Error ? error.message : "Failed to run pipeline"}`)

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -8,27 +8,44 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Crosshair, Loader2, X, Plus, ArrowRight, ArrowLeft } from "lucide-react"
+import { Crosshair, Loader2, X, Plus, ArrowRight, ArrowLeft, Upload } from "lucide-react"
 import Link from "next/link"
 import { api } from "@/lib/api"
 import { createClient } from "@/lib/supabase/client"
+
+// Common skills list for autocomplete
+const COMMON_SKILLS = [
+  "Python", "JavaScript", "TypeScript", "React", "Vue.js", "Angular", "Node.js", "Express",
+  "Django", "Flask", "Java", "C++", "C#", ".NET", "Ruby", "Rails", "PHP", "Laravel",
+  "SQL", "PostgreSQL", "MySQL", "MongoDB", "Redis", "Docker", "Kubernetes", "AWS", "Azure",
+  "Google Cloud", "Git", "CI/CD", "Machine Learning", "Data Science", "TensorFlow", "PyTorch",
+  "REST API", "GraphQL", "WebSocket", "HTML", "CSS", "Tailwind CSS", "Bootstrap", "Figma",
+  "UI/UX Design", "Project Management", "Agile", "Scrum", "Leadership", "Communication",
+  "Problem Solving", "Debugging", "Testing", "JUnit", "Jest", "Selenium", "DevOps",
+  "Linux", "Windows", "macOS", "Bash", "PowerShell", "Git", "SVN", "JIRA", "Confluence",
+  "Microservices", "System Design", "Databases", "Frontend", "Backend", "Full Stack",
+]
 
 export default function ProfileSetupPage() {
   const router = useRouter()
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   
   // Step 1: Basic Info
   const [fullName, setFullName] = useState("")
   const [linkedinUrl, setLinkedinUrl] = useState("")
   
   // Step 2: Resume
-  const [resumeText, setResumeText] = useState("")
+  const [resumeFile, setResumeFile] = useState<File | null>(null)
+  const [resumeFileName, setResumeFileName] = useState("")
   
   // Step 3: Skills
   const [skills, setSkills] = useState<string[]>([])
   const [newSkill, setNewSkill] = useState("")
+  const [filteredSkills, setFilteredSkills] = useState<string[]>([])
+  const [showSuggestions, setShowSuggestions] = useState(false)
   const [experienceYears, setExperienceYears] = useState("")
   
   // Step 4: Preferences
@@ -40,10 +57,35 @@ export default function ProfileSetupPage() {
   const [salaryMin, setSalaryMin] = useState("")
   const [salaryMax, setSalaryMax] = useState("")
 
-  const addSkill = () => {
-    if (newSkill.trim() && !skills.includes(newSkill.trim())) {
-      setSkills([...skills, newSkill.trim()])
+  const handleResumeFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      setResumeFile(file)
+      setResumeFileName(file.name)
+    }
+  }
+
+  const handleSkillInput = (value: string) => {
+    setNewSkill(value)
+    if (value.trim()) {
+      const filtered = COMMON_SKILLS.filter(
+        skill => skill.toLowerCase().includes(value.toLowerCase()) && !skills.includes(skill)
+      )
+      setFilteredSkills(filtered)
+      setShowSuggestions(true)
+    } else {
+      setFilteredSkills([])
+      setShowSuggestions(false)
+    }
+  }
+
+  const addSkill = (skill?: string) => {
+    const skillToAdd = skill || newSkill.trim()
+    if (skillToAdd && !skills.includes(skillToAdd)) {
+      setSkills([...skills, skillToAdd])
       setNewSkill("")
+      setFilteredSkills([])
+      setShowSuggestions(false)
     }
   }
 
@@ -83,6 +125,12 @@ export default function ProfileSetupPage() {
       
       if (session?.access_token) {
         api.setToken(session.access_token)
+      }
+
+      // Read file if provided
+      let resumeText = ""
+      if (resumeFile) {
+        resumeText = await resumeFile.text()
       }
 
       await api.updateProfile({
@@ -181,14 +229,21 @@ export default function ProfileSetupPage() {
           {step === 2 && (
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="resume">Paste Your Resume</Label>
-                <Textarea
-                  id="resume"
-                  placeholder="Paste your resume text here... Our AI will analyze it to craft personalized applications."
-                  value={resumeText}
-                  onChange={(e) => setResumeText(e.target.value)}
-                  className="min-h-[300px]"
-                />
+                <Label htmlFor="resume">Upload Your Resume</Label>
+                <div className="border-2 border-dashed border-border rounded-lg p-6 text-center cursor-pointer hover:border-accent transition-colors" 
+                  onClick={() => fileInputRef.current?.click()}>
+                  <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+                  <p className="text-sm font-medium">{resumeFileName || "Click to upload or drag and drop"}</p>
+                  <p className="text-xs text-muted-foreground mt-1">PDF, DOC, DOCX or TXT</p>
+                  <input
+                    ref={fileInputRef}
+                    id="resume"
+                    type="file"
+                    accept=".pdf,.doc,.docx,.txt"
+                    onChange={handleResumeFileChange}
+                    className="hidden"
+                  />
+                </div>
                 <p className="text-xs text-muted-foreground">
                   The Ghostwriter agent will use this to tailor your applications
                 </p>
@@ -201,16 +256,32 @@ export default function ProfileSetupPage() {
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label>Your Skills</Label>
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Add a skill (e.g., Python, React, Project Management)"
-                    value={newSkill}
-                    onChange={(e) => setNewSkill(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addSkill())}
-                  />
-                  <Button type="button" onClick={addSkill} size="icon">
-                    <Plus className="h-4 w-4" />
-                  </Button>
+                <div className="relative">
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Add a skill (e.g., Python, React)"
+                      value={newSkill}
+                      onChange={(e) => handleSkillInput(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addSkill())}
+                      onFocus={() => newSkill && setShowSuggestions(true)}
+                    />
+                    <Button type="button" onClick={() => addSkill()} size="icon" disabled={!newSkill.trim()}>
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  {showSuggestions && filteredSkills.length > 0 && (
+                    <div className="absolute top-full left-0 right-12 mt-1 bg-card border border-border rounded-lg shadow-lg z-10 max-h-40 overflow-y-auto">
+                      {filteredSkills.slice(0, 8).map((skill) => (
+                        <button
+                          key={skill}
+                          onClick={() => addSkill(skill)}
+                          className="w-full text-left px-3 py-2 hover:bg-accent/10 transition-colors text-sm"
+                        >
+                          {skill}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div className="flex flex-wrap gap-2 mt-2">
                   {skills.map((skill) => (

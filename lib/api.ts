@@ -148,10 +148,10 @@ class ApiClient {
   }
 
   // Agents
-  async runScout(query: string, location?: string) {
+  async runScout(query: string, location?: string, userId?: string) {
     return this.request<AgentResponse>("/agents/scout/run", {
       method: "POST",
-      body: JSON.stringify({ query, location }),
+      body: JSON.stringify({ query, location, user_id: userId || "default" }),
     })
   }
 
@@ -169,10 +169,10 @@ class ApiClient {
     })
   }
 
-  async runFullPipeline(query: string, location?: string) {
+  async runFullPipeline(query: string, location?: string, userId?: string) {
     return this.request<AgentResponse>("/agents/pipeline/run", {
       method: "POST",
-      body: JSON.stringify({ query, location }),
+      body: JSON.stringify({ query, location, user_id: userId || "default" }),
     })
   }
 
