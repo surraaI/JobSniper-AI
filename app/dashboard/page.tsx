@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { api, type Profile, type Application } from "@/lib/api"
 import { Header } from "@/components/landing/header"
@@ -26,6 +27,7 @@ import {
   Send,
   CheckCircle,
   AlertTriangle,
+  Settings,
 } from "lucide-react"
 
 export default function DashboardPage() {
@@ -177,9 +179,17 @@ export default function DashboardPage() {
                 Welcome back, {fullName || user?.email}
               </p>
             </div>
-            <Button variant="outline" onClick={handleLogout}>
-              Sign out
-            </Button>
+            <div className="flex gap-3">
+              <Button variant="outline" asChild>
+                <Link href="/dashboard/settings">
+                  <Settings className="w-4 h-4 mr-2" />
+                  Settings
+                </Link>
+              </Button>
+              <Button variant="outline" onClick={handleLogout}>
+                Sign out
+              </Button>
+            </div>
           </div>
 
           {agentResult && (
