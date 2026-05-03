@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { api } from "@/lib/api"
+import { createClient } from "@/lib/supabase/client"
 
 type JobStatus = "applied" | "under_review" | "assessment" | "interview_scheduled" | "interview" | "rejected" | "offer" | "pending_approval" | "approved" | "withdrawn"
 
@@ -32,286 +33,198 @@ interface Job {
   source: "sniper" | "sentinel"
 }
 
-const mockJobs: Job[] = [
-  {
-    id: "1",
-    company: "Stripe",
-    position: "Senior Frontend Engineer",
-    location: "San Francisco, CA (Remote)",
-    salary: "$180k - $220k",
-    appliedDate: "2026-04-26",
-    status: "interview_scheduled",
-    jobUrl: "https://stripe.com/jobs/listing/senior-frontend-engineer",
-    matchScore: 94,
-    notes: "Interview scheduled for May 2nd",
-    sentinelUpdate: "Calendly link detected - Interview confirmed via email",
-    source: "sniper",
-  },
-  {
-    id: "2",
-    company: "Bending Spoons",
-    position: "Product Intern - Evernote",
-    location: "Milan, Italy (Remote)",
-    salary: "€40k - €50k",
-    appliedDate: "2026-04-25",
-    status: "assessment",
-    jobUrl: "https://bendingspoons.com/careers/product-intern",
-    matchScore: 87,
-    sentinelUpdate: "Technical assessment received - BRGHT IQ Test required",
-    deadline: "2026-05-01",
-    source: "sniper",
-  },
-  {
-    id: "3",
-    company: "Vercel",
-    position: "Staff Software Engineer",
-    location: "Remote",
-    salary: "$200k - $250k",
-    appliedDate: "2026-04-25",
-    status: "under_review",
-    jobUrl: "https://vercel.com/careers/staff-software-engineer",
-    matchScore: 91,
-    sentinelUpdate: "Application viewed by recruiter",
-    source: "sniper",
-  },
-  {
-    id: "4",
-    company: "Linear",
-    position: "Full Stack Developer",
-    location: "Remote (US/EU)",
-    salary: "$150k - $190k",
-    appliedDate: "2026-04-24",
-    status: "applied",
-    jobUrl: "https://linear.app/careers/full-stack-developer",
-    matchScore: 88,
-    source: "sniper",
-  },
-  {
-    id: "5",
-    company: "Notion",
-    position: "Product Engineer",
-    location: "New York, NY (Hybrid)",
-    salary: "$170k - $210k",
-    appliedDate: "2026-04-23",
-    status: "interview",
-    jobUrl: "https://notion.so/careers/product-engineer",
-    matchScore: 86,
-    notes: "Completed first round, awaiting feedback",
-    sentinelUpdate: "Follow-up email from recruiter detected",
-    source: "sniper",
-  },
-  {
-    id: "6",
-    company: "Vatemp",
-    position: "Full Stack Developer",
-    location: "Remote",
-    salary: "$120k - $150k",
-    appliedDate: "2026-04-22",
-    status: "assessment",
-    jobUrl: "https://vatemp.com/careers/full-stack-developer",
-    matchScore: 84,
-    sentinelUpdate: "Technical screening questionnaire received",
-    deadline: "2026-04-30",
-    source: "sniper",
-  },
-  {
-    id: "7",
-    company: "Figma",
-    position: "Senior Software Engineer",
-    location: "San Francisco, CA",
-    salary: "$175k - $225k",
-    appliedDate: "2026-04-22",
-    status: "rejected",
-    jobUrl: "https://figma.com/careers/senior-software-engineer",
-    matchScore: 82,
-    sentinelUpdate: "Rejection email detected - 2 similar roles found as replacements",
-    source: "sniper",
-  },
-  {
-    id: "8",
-    company: "Anthropic",
-    position: "ML Engineer",
-    location: "San Francisco, CA",
-    salary: "$250k - $350k",
-    appliedDate: "2026-04-21",
-    status: "offer",
-    jobUrl: "https://anthropic.com/careers/ml-engineer",
-    matchScore: 79,
-    notes: "Offer received! $280k base + equity",
-    sentinelUpdate: "Offer letter detected in inbox",
-    source: "sniper",
-  },
-  {
-    id: "9",
-    company: "Jobgether",
-    position: "Remote Engineer",
-    location: "Remote (Global)",
-    salary: "$130k - $170k",
-    appliedDate: "2026-04-20",
-    status: "under_review",
-    jobUrl: "https://jobgether.com/careers/remote-engineer",
-    matchScore: 85,
-    sentinelUpdate: "Status update email - Application under review",
-    source: "sniper",
-  },
-  {
-    id: "10",
-    company: "Plaid",
-    position: "Software Engineer",
-    location: "Remote",
-    salary: "$160k - $200k",
-    appliedDate: "2026-04-19",
-    status: "applied",
-    jobUrl: "https://plaid.com/careers/software-engineer",
-    matchScore: 83,
-    source: "sniper",
-  },
-]
-
-const statusConfig: Record<JobStatus, { label: string; color: string; icon: React.ReactNode }> = {
-  applied: {
-    label: "Applied",
-    color: "bg-secondary text-secondary-foreground",
-    icon: <Clock className="h-3.5 w-3.5" />,
-  },
-  under_review: {
-    label: "Under Review",
-    color: "bg-blue-500/20 text-blue-400",
-    icon: <Mail className="h-3.5 w-3.5" />,
-  },
-  assessment: {
-    label: "Assessment",
-    color: "bg-amber-500/20 text-amber-400",
-    icon: <FileText className="h-3.5 w-3.5" />,
-  },
-  interview_scheduled: {
-    label: "Interview Scheduled",
-    color: "bg-cyan-500/20 text-cyan-400",
-    icon: <Calendar className="h-3.5 w-3.5" />,
-  },
-  interview: {
-    label: "In Progress",
-    color: "bg-accent/20 text-accent",
-    icon: <MessageSquare className="h-3.5 w-3.5" />,
-  },
-  rejected: {
-    label: "Rejected",
-    color: "bg-destructive/20 text-destructive",
-    icon: <XCircle className="h-3.5 w-3.5" />,
-  },
-  offer: {
-    label: "Offer",
-    color: "bg-green-500/20 text-green-400",
-    icon: <CheckCircle2 className="h-3.5 w-3.5" />,
-  },
-  pending_approval: {
-    label: "Pending Approval",
-    color: "bg-yellow-500/20 text-yellow-400",
-    icon: <Clock className="h-3.5 w-3.5" />,
-  },
-  approved: {
-    label: "Approved",
-    color: "bg-emerald-500/20 text-emerald-400",
-    icon: <CheckCircle2 className="h-3.5 w-3.5" />,
-  },
-  withdrawn: {
-    label: "Withdrawn",
-    color: "bg-slate-500/20 text-slate-300",
-    icon: <XCircle className="h-3.5 w-3.5" />,
-  },
-}
-
 export function JobsTracker() {
+  const [jobs, setJobs] = useState<Job[]>([])
+  const [filteredJobs, setFilteredJobs] = useState<Job[]>([])
+  const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
-  const [statusFilter, setStatusFilter] = useState<string>("all")
-  const [jobs, setJobs] = useState<Job[]>(mockJobs)
-  const [loading, setLoading] = useState(false)
-  const [usingDemo, setUsingDemo] = useState(true)
-
-  const fetchJobs = async () => {
-    setLoading(true)
-    try {
-      const response = await api.getApplications()
-      if (response.applications && response.applications.length > 0) {
-        const mappedJobs: Job[] = response.applications.map((app) => ({
-          id: app.id,
-          company: app.job?.company || "Unknown",
-          position: app.job?.title || "Unknown Position",
-          location: app.job?.location || "Unknown",
-          salary: app.job?.salary_min && app.job?.salary_max 
-            ? `$${app.job.salary_min / 1000}k - $${app.job.salary_max / 1000}k`
-            : "Not specified",
-          appliedDate: app.applied_at || app.created_at,
-          status: app.status as JobStatus,
-          jobUrl: app.job?.job_url || "#",
-          matchScore: app.match_score || 0,
-          sentinelUpdate: app.sentinel_update,
-          deadline: app.deadline,
-          source: "sniper" as const,
-        }))
-        setJobs(mappedJobs)
-        setUsingDemo(false)
-      }
-    } catch (error) {
-      console.log("[v0] Using demo data - API unavailable:", error)
-      setJobs(mockJobs)
-      setUsingDemo(true)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const [statusFilter, setStatusFilter] = useState<JobStatus | "all">("all")
+  const [sourceFilter, setSourceFilter] = useState<"all" | "sniper" | "sentinel">("all")
 
   useEffect(() => {
-    fetchJobs()
+    const fetchApplications = async () => {
+      try {
+        setLoading(true)
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        
+        if (!user) {
+          setLoading(false)
+          return
+        }
+
+        // Fetch applications with job details
+        const { data, error } = await supabase
+          .from("applications")
+          .select(`
+            id,
+            status,
+            match_score,
+            created_at,
+            jobs:job_id (
+              id,
+              title,
+              company,
+              location,
+              salary_min,
+              salary_max,
+              job_url,
+              source
+            )
+          `)
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false })
+
+        if (error) {
+          console.error("[v0] Error fetching applications:", error)
+          setLoading(false)
+          return
+        }
+
+        // Transform data to match Job interface
+        const transformedJobs: Job[] = (data || []).map((app: any) => {
+          const job = app.jobs
+          const salaryRange = job.salary_min && job.salary_max 
+            ? `$${(job.salary_min / 1000).toFixed(0)}k - $${(job.salary_max / 1000).toFixed(0)}k`
+            : "Salary not specified"
+
+          return {
+            id: app.id,
+            company: job.company || "Unknown Company",
+            position: job.title || "Position",
+            location: job.location || "Location not specified",
+            salary: salaryRange,
+            appliedDate: new Date(app.created_at).toISOString().split("T")[0],
+            status: app.status || "applied",
+            jobUrl: job.job_url || "#",
+            matchScore: app.match_score || 0,
+            source: job.source === "adzuna" ? "sniper" : "sentinel",
+          }
+        })
+
+        setJobs(transformedJobs)
+        setFilteredJobs(transformedJobs)
+      } catch (err) {
+        console.error("[v0] Error loading applications:", err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchApplications()
   }, [])
 
-  const filteredJobs = jobs.filter((job) => {
-    const matchesSearch =
-      job.company.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      job.position.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesStatus = statusFilter === "all" || job.status === statusFilter
-    return matchesSearch && matchesStatus
-  })
+  // Apply filters
+  useEffect(() => {
+    let filtered = [...jobs]
+
+    // Search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase()
+      filtered = filtered.filter(
+        (job) =>
+          job.company.toLowerCase().includes(query) ||
+          job.position.toLowerCase().includes(query)
+      )
+    }
+
+    // Status filter
+    if (statusFilter !== "all") {
+      filtered = filtered.filter((job) => job.status === statusFilter)
+    }
+
+    // Source filter
+    if (sourceFilter !== "all") {
+      filtered = filtered.filter((job) => job.source === sourceFilter)
+    }
+
+    setFilteredJobs(filtered)
+  }, [jobs, searchQuery, statusFilter, sourceFilter])
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="w-8 h-8 animate-spin text-accent" />
+      </div>
+    )
+  }
+
+  if (jobs.length === 0) {
+    return (
+      <div className="text-center py-12">
+        <Building2 className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+        <h3 className="text-lg font-semibold mb-2">No applications yet</h3>
+        <p className="text-muted-foreground mb-6">Start hunting for jobs in your dashboard to see applications here</p>
+        <Button asChild>
+          <a href="/dashboard">Go to Dashboard</a>
+        </Button>
+      </div>
+    )
+  }
+
+  const statusConfig: Record<JobStatus, { label: string; color: string; icon: React.ReactNode }> = {
+    applied: {
+      label: "Applied",
+      color: "bg-secondary text-secondary-foreground",
+      icon: <Clock className="h-3.5 w-3.5" />,
+    },
+    under_review: {
+      label: "Under Review",
+      color: "bg-blue-500/20 text-blue-400",
+      icon: <Mail className="h-3.5 w-3.5" />,
+    },
+    assessment: {
+      label: "Assessment",
+      color: "bg-amber-500/20 text-amber-400",
+      icon: <FileText className="h-3.5 w-3.5" />,
+    },
+    interview_scheduled: {
+      label: "Interview Scheduled",
+      color: "bg-cyan-500/20 text-cyan-400",
+      icon: <Calendar className="h-3.5 w-3.5" />,
+    },
+    interview: {
+      label: "In Progress",
+      color: "bg-accent/20 text-accent",
+      icon: <MessageSquare className="h-3.5 w-3.5" />,
+    },
+    rejected: {
+      label: "Rejected",
+      color: "bg-destructive/20 text-destructive",
+      icon: <XCircle className="h-3.5 w-3.5" />,
+    },
+    offer: {
+      label: "Offer",
+      color: "bg-green-500/20 text-green-400",
+      icon: <CheckCircle2 className="h-3.5 w-3.5" />,
+    },
+    pending_approval: {
+      label: "Pending Approval",
+      color: "bg-yellow-500/20 text-yellow-400",
+      icon: <Clock className="h-3.5 w-3.5" />,
+    },
+    approved: {
+      label: "Approved",
+      color: "bg-emerald-500/20 text-emerald-400",
+      icon: <CheckCircle2 className="h-3.5 w-3.5" />,
+    },
+    withdrawn: {
+      label: "Withdrawn",
+      color: "bg-slate-500/20 text-slate-300",
+      icon: <XCircle className="h-3.5 w-3.5" />,
+    },
+  }
 
   const stats = {
     total: jobs.length,
     interviews: jobs.filter((j) => j.status === "interview" || j.status === "interview_scheduled").length,
     assessments: jobs.filter((j) => j.status === "assessment").length,
     offers: jobs.filter((j) => j.status === "offer").length,
-    actionRequired: jobs.filter((j) => j.deadline || j.status === "assessment" || j.status === "interview_scheduled").length,
+    actionRequired: jobs.filter((j) => j.status === "assessment" || j.status === "interview_scheduled").length,
   }
 
   return (
     <div className="space-y-6">
-      {/* Header with refresh */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          {usingDemo && (
-            <Badge variant="outline" className="text-amber-400 border-amber-400/50">
-              Demo Mode
-            </Badge>
-          )}
-          {!usingDemo && (
-            <Badge variant="outline" className="text-green-400 border-green-400/50">
-              Live Data
-            </Badge>
-          )}
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={fetchJobs}
-          disabled={loading}
-        >
-          {loading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <RefreshCw className="h-4 w-4" />
-          )}
-          <span className="ml-2">Refresh</span>
-        </Button>
-      </div>
-
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div className="rounded-lg border border-border bg-card p-4">
@@ -350,7 +263,7 @@ export function JobsTracker() {
             className="pl-10 bg-card border-border"
           />
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
+        <Select value={statusFilter as string} onValueChange={(value) => setStatusFilter(value as JobStatus | "all")}>
           <SelectTrigger className="w-full sm:w-48 bg-card border-border">
             <Filter className="h-4 w-4 mr-2" />
             <SelectValue placeholder="Filter by status" />

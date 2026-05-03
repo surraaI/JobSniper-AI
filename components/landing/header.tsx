@@ -9,11 +9,13 @@ import { createClient } from "@/lib/supabase/client"
 const navLinks = [
   { label: "How it works", href: "/#how-it-works" },
   { label: "Features", href: "/#features" },
-  { label: "Dashboard", href: "/dashboard" },
-  { label: "Applied Jobs", href: "/jobs" },
 ]
 
-export function Header() {
+interface HeaderProps {
+  hideAuthButtons?: boolean
+}
+
+export function Header({ hideAuthButtons = false }: HeaderProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [user, setUser] = useState<{ id: string; email: string } | null>(null)
   const [loading, setLoading] = useState(true)
@@ -62,21 +64,25 @@ export function Header() {
         </nav>
 
         <div className="hidden md:flex items-center gap-4">
-          {!loading && user ? (
+          {!hideAuthButtons && (
             <>
-              <span className="text-sm text-muted-foreground">{user.email}</span>
-              <Button variant="outline" size="sm" onClick={handleLogout}>
-                Sign out
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button variant="ghost" size="sm" asChild>
-                <Link href="/auth/login">Sign in</Link>
-              </Button>
-              <Button size="sm" asChild>
-                <Link href="/auth/signup">Get early access</Link>
-              </Button>
+              {!loading && user ? (
+                <>
+                  <span className="text-sm text-muted-foreground">{user.email}</span>
+                  <Button variant="outline" size="sm" onClick={handleLogout}>
+                    Sign out
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button variant="ghost" size="sm" asChild>
+                    <Link href="/auth/login">Sign in</Link>
+                  </Button>
+                  <Button size="sm" asChild>
+                    <Link href="/auth/signup">Get early access</Link>
+                  </Button>
+                </>
+              )}
             </>
           )}
         </div>
@@ -105,25 +111,27 @@ export function Header() {
                 {link.label}
               </Link>
             ))}
-            <div className="flex flex-col gap-2 pt-4 border-t border-border">
-              {!loading && user ? (
-                <>
-                  <span className="text-sm text-muted-foreground px-2">{user.email}</span>
-                  <Button variant="ghost" size="sm" onClick={handleLogout}>
-                    Sign out
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <Button variant="ghost" size="sm" asChild>
-                    <Link href="/auth/login">Sign in</Link>
-                  </Button>
-                  <Button size="sm" asChild>
-                    <Link href="/auth/signup">Get early access</Link>
-                  </Button>
-                </>
-              )}
-            </div>
+            {!hideAuthButtons && (
+              <div className="flex flex-col gap-2 pt-4 border-t border-border">
+                {!loading && user ? (
+                  <>
+                    <span className="text-sm text-muted-foreground px-2">{user.email}</span>
+                    <Button variant="ghost" size="sm" onClick={handleLogout}>
+                      Sign out
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button variant="ghost" size="sm" asChild>
+                      <Link href="/auth/login">Sign in</Link>
+                    </Button>
+                    <Button size="sm" asChild>
+                      <Link href="/auth/signup">Get early access</Link>
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
           </nav>
         </div>
       )}
