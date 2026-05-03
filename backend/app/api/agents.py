@@ -27,11 +27,49 @@ class ApplyRequest(BaseModel):
     job_id: str
 
 
-@router.post("/hunt")
-async def run_scout(request: HuntRequest, background_tasks: BackgroundTasks):
+@router.post("/scout/run")
+async def run_scout_only(request: HuntRequest):
     """
-    Run the Scout agent to discover new jobs.
-    Jobs are scored by Strategist and sent to user for approval.
+    Run only the Scout agent to discover new jobs.
+    """
+    from app.agents.scout import ScoutAgent
+    
+    scout = ScoutAgent()
+    
+    try:
+        # Get user profile for matching
+        client = await get_client()
+        profile_result = await client.table("profiles").select("*").eq("id", request.user_id).single().execute()
+        profile = profile_result.data
+        
+        # Scout discovers jobs
+        jobs = await scout.hunt(
+            query=request.query or ", ".join(profile.get("preferences", {}).get("target_roles", [])),
+            location=request.location,
+            limit=request.limit,
+        )
+        
+        # Log agent activity
+        await client.table("agent_logs").insert({
+            "user_id": request.user_id,
+            "agent": "scout",
+            "action": "hunt",
+            "output_data": {"jobs_found": len(jobs)},
+        }).execute()
+        
+        return {
+            "success": True,
+            "message": f"Scout found {len(jobs)} jobs matching your criteria",
+            "data": {"jobs_found": len(jobs), "sample_jobs": jobs[:3]},
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/pipeline/run")
+async def run_full_pipeline(request: HuntRequest):
+    """
+    Run the full pipeline: Scout + Strategist + store applications.
     """
     from app.agents.scout import ScoutAgent
     from app.agents.strategist import StrategistAgent
@@ -94,15 +132,18 @@ async def run_scout(request: HuntRequest, background_tasks: BackgroundTasks):
         await client.table("agent_logs").insert({
             "user_id": request.user_id,
             "agent": "scout",
-            "action": "hunt",
-            "output_data": {"jobs_found": len(jobs), "top_scored": len(scored_jobs[:10])},
+            "action": "full_pipeline",
+            "output_data": {"jobs_found": len(jobs), "pending_approval": len(scored_jobs[:10])},
         }).execute()
         
         return {
-            "status": "complete",
-            "jobs_found": len(jobs),
-            "pending_approval": len(scored_jobs[:10]),
-            "top_jobs": scored_jobs[:5],
+            "success": True,
+            "message": f"Pipeline complete! Found {len(jobs)} jobs, {len(scored_jobs[:10])} pending your approval",
+            "data": {
+                "jobs_found": len(jobs),
+                "pending_approval": len(scored_jobs[:10]),
+                "top_jobs": scored_jobs[:5],
+            },
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
