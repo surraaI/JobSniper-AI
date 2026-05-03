@@ -447,3 +447,4 @@ export default function ProfileSetupPage() {
       </Card>
     </div>
   )
+}
