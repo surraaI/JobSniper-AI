@@ -9,6 +9,8 @@ import { createClient } from "@/lib/supabase/client"
 const navLinks = [
   { label: "How it works", href: "/#how-it-works" },
   { label: "Features", href: "/#features" },
+  { label: "Dashboard", href: "/dashboard" },
+  { label: "Applied Jobs", href: "/jobs" },
 ]
 
 interface HeaderProps {
